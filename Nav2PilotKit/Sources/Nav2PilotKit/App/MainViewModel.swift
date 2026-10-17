@@ -173,6 +173,15 @@ public final class MainViewModel {
         destinationChanged()
     }
 
+    /// Send button on a favorite: select it (brings the Send tab up, where the feedback shows) and send it.
+    public func sendFavorite(_ favorite: Favorite) async {
+        if sending {
+            return
+        }
+        selectFavorite(favorite)
+        await sendDestination()
+    }
+
     public func clearSelection() {
         resolveGeneration += 1
         destination = nil

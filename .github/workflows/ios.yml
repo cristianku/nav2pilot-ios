@@ -76,7 +76,7 @@ jobs:
           ditto -c -k --keepParent Nav2Pilot.app "$GITHUB_WORKSPACE/build/Nav2Pilot-simulator.zip"
 
       - name: Upload simulator app
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: nav2pilot-simulator-app
           path: build/Nav2Pilot-simulator.zip
@@ -84,7 +84,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: nav2pilot-test-results
           path: build/Nav2Pilot-tests.xcresult

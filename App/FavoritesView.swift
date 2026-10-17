@@ -22,10 +22,29 @@ struct FavoritesView: View {
         } else {
             List {
                 ForEach(viewModel.favorites) { favorite in
-                    Button {
-                        viewModel.selectFavorite(favorite)
-                    } label: {
-                        FavoriteRow(destination: favorite.destination)
+                    HStack {
+                        Button {
+                            viewModel.selectFavorite(favorite)
+                        } label: {
+                            FavoriteRow(destination: favorite.destination)
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        Button {
+                            Task {
+                                await viewModel.sendFavorite(favorite)
+                            }
+                        } label: {
+                            Image(systemName: "paperplane.fill")
+                                .font(.title3)
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 10))
+                                .opacity(viewModel.selectedDevice() == nil || viewModel.sending ? 0.4 : 1)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(viewModel.selectedDevice() == nil || viewModel.sending)
+                        .accessibilityLabel("Send to comma")
                     }
                     .swipeActions {
                         Button(role: .destructive) {
