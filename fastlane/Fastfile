@@ -41,12 +41,17 @@ platform :ios do
   lane :validate_secrets do
     setup_ci if ENV["CI"]
     connect_api_key
-    match(
-      type: "appstore",
-      readonly: true,
-      git_basic_authorization: match_authorization,
-      app_identifier: []
-    )
+    Spaceship::ConnectAPI.get_bundle_ids(limit: 1)
+    if ENV["MATCH_REPOSITORY_EMPTY"] == "true"
+      UI.important("Signing repository is empty. MATCH_PASSWORD decryption will be checked after certificates are created.")
+    else
+      match(
+        type: "appstore",
+        readonly: true,
+        git_basic_authorization: match_authorization,
+        app_identifier: []
+      )
+    end
   end
 
   desc "Add Identifiers: register both bundle IDs with the App Groups capability"
