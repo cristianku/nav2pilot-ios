@@ -1,0 +1,330 @@
+import MapboxMaps
+import Nav2PilotKit
+import SwiftUI
+
+/// Route preview on a Mapbox map: the fastest route and its alternatives, stops added with a long press.
+/// What is picked here is what the device follows (sunnypilot setNavRoute).
+struct RouteSection: View {
+    let viewModel: MainViewModel
+
+    var body: some View {
+        if viewModel.routePlanningAvailable && viewModel.destination != nil {
+            Section {
+                if viewModel.hasMapboxToken {
+                    plannedRoute()
+                } else {
+                    setup()
+                }
+            } header: {
+                Text("Route")
+            } footer: {
+                if viewModel.hasMapboxToken {
+                    Text("Long-press the map to add a stop. The device follows the route you pick: through your stops, or through points of the alternative.")
+                }
+            }
+            // the first plan, and a new one for every new destination
+            .task(id: viewModel.destination) {
+                await viewModel.refreshRoutes()
+            }
+        }
+    }
+
+    private func setup() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Pick the route and add stops on a map. It uses your own free Mapbox account, the same map service as the device.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Button("Set up Mapbox") {
+                viewModel.showMapboxSheet()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func plannedRoute() -> some View {
+        if let token = viewModel.mapboxAccessToken() {
+            RouteMap(viewModel: viewModel, accessToken: token)
+                .frame(height: 300)
+                .listRowInsets(EdgeInsets())
+        }
+        if viewModel.routesLoading {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Computing routes…")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        if !viewModel.routesMessage.isEmpty {
+            Text(viewModel.routesMessage)
+                .font(.footnote)
+                .foregroundStyle(.red)
+        }
+        ForEach(0..<viewModel.routes.count, id: \.self) { index in
+            RouteRow(
+                route: viewModel.routes[index],
+                index: index,
+                selected: index == viewModel.selectedRouteIndex,
+                onSelect: {
+                    viewModel.selectRoute(index)
+                }
+            )
+        }
+        ForEach(0..<viewModel.stops.count, id: \.self) { index in
+            let stop = viewModel.stops[index]
+            HStack {
+                Label(stop.name, systemImage: "\(index + 1).circle.fill")
+                Spacer()
+                Text(stop.coordinatesText())
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Button {
+                    Task {
+                        await viewModel.removeStop(at: index)
+                    }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Remove \(stop.name)")
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+    }
+}
+
+private struct RouteRow: View {
+    let route: RoutePreview
+    let index: Int
+    let selected: Bool
+    let onSelect: () -> Void
+
+    var body: some View {
+        Button(action: onSelect) {
+            HStack(spacing: 12) {
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.tint)
+                } else {
+                    Image(systemName: "circle")
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(RouteFormatting.duration(route.durationSeconds) + " · " + RouteFormatting.distance(route.distanceMeters))
+                        .foregroundStyle(.primary)
+                    Text(subtitle())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func subtitle() -> String {
+        var text = "Fastest"
+        if index > 0 {
+            text = "Alternative \(index)"
+        }
+        if !route.summary.isEmpty {
+            text += " · " + route.summary
+        }
+        return text
+    }
+}
+
+enum RouteFormatting {
+    static func duration(_ seconds: Double) -> String {
+        let minutes = Int((seconds / 60).rounded())
+        if minutes < 60 {
+            return "\(max(1, minutes)) min"
+        }
+        return "\(minutes / 60) h \(String(format: "%02d", minutes % 60)) min"
+    }
+
+    static func distance(_ meters: Double) -> String {
+        if meters < 1000 {
+            return "\(Int(meters.rounded())) m"
+        }
+        return String(format: "%.1f km", meters / 1000)
+    }
+}
+
+/// The Mapbox map: routes (the picked one on top, in the accent colour), the destination and the stops.
+private struct RouteMap: View {
+    let viewModel: MainViewModel
+    @State private var viewport: Viewport = .idle
+
+    init(viewModel: MainViewModel, accessToken: String) {
+        self.viewModel = viewModel
+        // the user's own public token, read from the Keychain
+        MapboxOptions.accessToken = accessToken
+    }
+
+    var body: some View {
+        Map(viewport: $viewport) {
+            ForEvery(drawOrder(), id: \.self) { index in
+                PolylineAnnotation(lineCoordinates: coordinates(viewModel.routes[index].coordinates))
+                    .lineColor(StyleColor(lineColor(index)))
+                    .lineWidth(index == viewModel.selectedRouteIndex ? 7 : 5)
+                    .onTapGesture {
+                        viewModel.selectRoute(index)
+                    }
+            }
+            ForEvery(0..<viewModel.stops.count, id: \.self) { index in
+                MapViewAnnotation(coordinate: coordinate(viewModel.stops[index])) {
+                    Image(systemName: "\(index + 1).circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white, .orange)
+                }
+            }
+            if let destination = viewModel.destination {
+                MapViewAnnotation(coordinate: coordinate(destination)) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.title)
+                        .foregroundStyle(.white, .red)
+                }
+            }
+            // a long press anywhere on the map adds a stop there
+            LongPressInteraction { context in
+                Task {
+                    await viewModel.addStop(latitude: context.coordinate.latitude, longitude: context.coordinate.longitude)
+                }
+                return true
+            }
+        }
+        .onAppear {
+            fit()
+        }
+        .onChange(of: viewModel.routes) {
+            fit()
+        }
+    }
+
+    /// Unpicked routes first, so the picked one is drawn on top.
+    private func drawOrder() -> [Int] {
+        var order: [Int] = []
+        for index in 0..<viewModel.routes.count {
+            if index != viewModel.selectedRouteIndex {
+                order.append(index)
+            }
+        }
+        if viewModel.selectedRouteIndex < viewModel.routes.count {
+            order.append(viewModel.selectedRouteIndex)
+        }
+        return order
+    }
+
+    private func lineColor(_ index: Int) -> UIColor {
+        if index == viewModel.selectedRouteIndex {
+            return UIColor(named: "AccentColor") ?? .systemGreen
+        }
+        return UIColor.systemGray
+    }
+
+    private func fit() {
+        var points: [CLLocationCoordinate2D] = []
+        for route in viewModel.routes {
+            points.append(contentsOf: coordinates(route.coordinates))
+        }
+        if let destination = viewModel.destination {
+            points.append(coordinate(destination))
+        }
+        if let origin = viewModel.origin {
+            points.append(CLLocationCoordinate2D(latitude: origin.latitude, longitude: origin.longitude))
+        }
+        if points.isEmpty {
+            return
+        }
+        viewport = .overview(geometry: MultiPoint(points), geometryPadding: EdgeInsets(top: 40, leading: 30, bottom: 40, trailing: 30))
+    }
+
+    private func coordinates(_ points: [LatLng]) -> [CLLocationCoordinate2D] {
+        var result: [CLLocationCoordinate2D] = []
+        for point in points {
+            result.append(CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude))
+        }
+        return result
+    }
+
+    private func coordinate(_ destination: Destination) -> CLLocationCoordinate2D {
+        return CLLocationCoordinate2D(latitude: destination.latitude, longitude: destination.longitude)
+    }
+}
+
+/// Mapbox setup: each user has their own free account and pastes its default public token.
+struct MapboxTokenSheet: View {
+    let viewModel: MainViewModel
+    @State private var token = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("1. Create a free Mapbox account.")
+                        Text("2. On the Tokens page copy the Default public token (it starts with pk.).")
+                        Text("3. Paste it here.")
+                    }
+                    .font(.subheadline)
+                    if let signup = URL(string: MapboxEndpoints.signupUrl) {
+                        Link(destination: signup) {
+                            Label("Create a free Mapbox account", systemImage: "person.badge.plus")
+                        }
+                    }
+                    if let tokens = URL(string: MapboxEndpoints.tokensPageUrl) {
+                        Link(destination: tokens) {
+                            Label("Open the Mapbox Tokens page", systemImage: "key")
+                        }
+                    }
+                }
+                Section {
+                    SecureField("pk.…", text: $token)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    PasteButton(payloadType: String.self) { strings in
+                        guard let text = strings.first else {
+                            return
+                        }
+                        Task { @MainActor in
+                            token = text
+                        }
+                    }
+                    .labelStyle(.titleAndIcon)
+                } footer: {
+                    Text("The token is checked with Mapbox, then stored in the Keychain of this iPhone only. The free tier covers personal use.")
+                }
+                if !viewModel.mapboxMessage.isEmpty {
+                    Section {
+                        Text(viewModel.mapboxMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Mapbox")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        viewModel.hideMapboxSheet()
+                    }
+                    .disabled(viewModel.mapboxBusy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if viewModel.mapboxBusy {
+                        ProgressView()
+                    } else {
+                        Button("Verify and save") {
+                            Task {
+                                await viewModel.saveMapboxToken(token)
+                            }
+                        }
+                        .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .interactiveDismissDisabled(viewModel.mapboxBusy)
+        }
+    }
+}

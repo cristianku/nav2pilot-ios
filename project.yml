@@ -1,0 +1,162 @@
+# XcodeGen spec. The generated Nav2Pilot.xcodeproj is committed, so XcodeGen is only needed after
+# editing this file: `xcodegen generate`.
+name: Nav2Pilot
+
+options:
+  bundleIdPrefix: com.cristianku
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1,2"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    DEAD_CODE_STRIPPING: YES
+
+packages:
+  Nav2PilotKit:
+    path: Nav2PilotKit
+  # Route map (app only). Downloads need no credentials; each user pastes their own public token in the app.
+  MapboxMaps:
+    url: https://github.com/mapbox/mapbox-maps-ios.git
+    exactVersion: 11.33.0
+
+targets:
+  Nav2Pilot:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    dependencies:
+      - package: Nav2PilotKit
+      - package: MapboxMaps
+      - target: Nav2PilotShare
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Nav2Pilot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # "Open with" for geo: links (RFC 5870)
+        CFBundleURLTypes:
+          - CFBundleURLName: com.cristianku.nav2pilot.geo
+            CFBundleURLSchemes:
+              - geo
+        ITSAppUsesNonExemptEncryption: false
+        NSLocationWhenInUseUsageDescription: "Your position is the start of the route preview. It is only sent to Mapbox, with your own token, to compute the routes."
+    entitlements:
+      path: App/Nav2Pilot.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.cristianku.nav2pilot
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.cristianku.nav2pilot.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cristianku.nav2pilot
+        PRODUCT_NAME: Nav2Pilot
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  Nav2PilotShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - ShareExtension
+      - Shared
+    dependencies:
+      - package: Nav2PilotKit
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Nav2Pilot
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            # Google Maps and Apple Maps share a link, often with the place name and address as text.
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    entitlements:
+      path: ShareExtension/Nav2PilotShare.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.cristianku.nav2pilot
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)com.cristianku.nav2pilot.shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cristianku.nav2pilot.share
+        PRODUCT_NAME: Nav2PilotShare
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  Nav2PilotAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - AppTests
+    dependencies:
+      - target: Nav2Pilot
+      - package: Nav2PilotKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cristianku.nav2pilot.apptests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/Nav2Pilot.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nav2Pilot
+        BUNDLE_LOADER: $(TEST_HOST)
+
+  Nav2PilotUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - UITests
+    dependencies:
+      - target: Nav2Pilot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.cristianku.nav2pilot.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Nav2Pilot
+
+schemes:
+  Nav2Pilot:
+    build:
+      targets:
+        Nav2Pilot: all
+        Nav2PilotShare: all
+    test:
+      config: Debug
+      targets:
+        - package: Nav2PilotKit/Nav2PilotKitTests
+        - Nav2PilotAppTests
+        - Nav2PilotUITests
+    run:
+      config: Debug
+    archive:
+      config: Release

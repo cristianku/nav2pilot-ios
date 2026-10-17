@@ -1,0 +1,91 @@
+name: iOS build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      # The committed Nav2Pilot.xcodeproj must match project.yml.
+      - name: Check the generated Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          git diff --exit-code -- Nav2Pilot.xcodeproj
+
+      - name: Package tests (macOS)
+        run: swift test --package-path Nav2PilotKit
+
+      - name: Pick an iPhone simulator
+        run: |
+          UDID=$(xcrun simctl list devices available --json | python3 -c '
+          import json, sys
+          runtimes = json.load(sys.stdin)["devices"]
+          for runtime in sorted(runtimes, reverse=True):
+              if "iOS" not in runtime:
+                  continue
+              for device in runtimes[runtime]:
+                  if device["name"].startswith("iPhone"):
+                      print(device["udid"])
+                      sys.exit(0)
+          sys.exit("no iPhone simulator")
+          ')
+          echo "SIMULATOR_ID=$UDID" >> "$GITHUB_ENV"
+
+      # Unit tests, app-hosted Keychain tests and UI tests. Simulator builds are signed to run locally,
+      # which needs no team and keeps the entitlements the Keychain tests depend on.
+      - name: Tests (iOS simulator)
+        run: |
+          xcodebuild test \
+            -project Nav2Pilot.xcodeproj \
+            -scheme Nav2Pilot \
+            -destination "id=$SIMULATOR_ID" \
+            -derivedDataPath build/DerivedData \
+            -resultBundlePath build/Nav2Pilot-tests.xcresult
+
+      - name: Device build (Release, unsigned)
+        run: |
+          xcodebuild build \
+            -project Nav2Pilot.xcodeproj \
+            -scheme Nav2Pilot \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package the simulator app
+        run: |
+          cd build/DerivedData/Build/Products/Debug-iphonesimulator
+          ditto -c -k --keepParent Nav2Pilot.app "$GITHUB_WORKSPACE/build/Nav2Pilot-simulator.zip"
+
+      - name: Upload simulator app
+        uses: actions/upload-artifact@v5
+        with:
+          name: nav2pilot-simulator-app
+          path: build/Nav2Pilot-simulator.zip
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: nav2pilot-test-results
+          path: build/Nav2Pilot-tests.xcresult
+          if-no-files-found: ignore

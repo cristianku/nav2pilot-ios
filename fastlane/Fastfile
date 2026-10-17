@@ -1,0 +1,160 @@
+# Nav2Pilot TestFlight build on GitHub Actions, in the style of the Trio browser build.
+# Lanes are run by the workflows in .github/workflows; see README "TestFlight".
+#
+# Secrets (repository secrets, same values as for Trio):
+#   TEAMID, FASTLANE_KEY_ID, FASTLANE_ISSUER_ID, FASTLANE_KEY, GH_PAT, MATCH_PASSWORD
+
+default_platform(:ios)
+
+TEAMID = ENV["TEAMID"]
+GH_PAT = ENV["GH_PAT"]
+GITHUB_WORKSPACE = ENV["GITHUB_WORKSPACE"]
+GITHUB_REPOSITORY_OWNER = ENV["GITHUB_REPOSITORY_OWNER"]
+FASTLANE_KEY_ID = ENV["FASTLANE_KEY_ID"]
+FASTLANE_ISSUER_ID = ENV["FASTLANE_ISSUER_ID"]
+FASTLANE_KEY = ENV["FASTLANE_KEY"]
+ENV["FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT"] = "120"
+
+# Must match project.yml (PRODUCT_BUNDLE_IDENTIFIER) and the App Group in the .entitlements files.
+APP_BUNDLE_ID = "com.cristianku.nav2pilot"
+SHARE_BUNDLE_ID = "com.cristianku.nav2pilot.share"
+APP_GROUP = "group.com.cristianku.nav2pilot"
+ALL_BUNDLE_IDS = [APP_BUNDLE_ID, SHARE_BUNDLE_ID]
+
+PROJECT_PATH = "#{GITHUB_WORKSPACE}/Nav2Pilot.xcodeproj"
+
+platform :ios do
+  # App Store Connect API key from the FASTLANE_* secrets.
+  private_lane :connect_api_key do
+    app_store_connect_api_key(
+      key_id: FASTLANE_KEY_ID,
+      issuer_id: FASTLANE_ISSUER_ID,
+      key_content: FASTLANE_KEY
+    )
+  end
+
+  private_lane :match_authorization do
+    Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}")
+  end
+
+  desc "Validate Secrets: API key works and Match-Secrets can be decrypted (changes nothing)"
+  lane :validate_secrets do
+    setup_ci if ENV["CI"]
+    connect_api_key
+    match(
+      type: "appstore",
+      readonly: true,
+      git_basic_authorization: match_authorization,
+      app_identifier: []
+    )
+  end
+
+  desc "Add Identifiers: register both bundle IDs with the App Groups capability"
+  lane :identifiers do
+    setup_ci if ENV["CI"]
+    connect_api_key
+
+    register = lambda do |name, identifier|
+      bundle_id = Spaceship::ConnectAPI::BundleId.find(identifier)
+      if bundle_id.nil?
+        bundle_id = Spaceship::ConnectAPI::BundleId.create(name: name, identifier: identifier, platform: "IOS")
+        UI.message("Created identifier #{identifier}")
+      else
+        UI.message("Identifier #{identifier} already exists")
+      end
+      existing = bundle_id.get_capabilities.map(&:capability_type)
+      app_groups = Spaceship::ConnectAPI::BundleIdCapability::Type::APP_GROUPS
+      unless existing.include?(app_groups)
+        bundle_id.create_capability(app_groups)
+        UI.message("Enabled App Groups on #{identifier}")
+      end
+    end
+
+    register.call("Nav2Pilot", APP_BUNDLE_ID)
+    register.call("Nav2Pilot Share", SHARE_BUNDLE_ID)
+
+    # The App Store Connect API cannot assign an App Group to an identifier: that step is manual.
+    UI.important("Manual step: in https://developer.apple.com/account/resources/identifiers create the App Group " \
+                 "#{APP_GROUP} and assign it to #{APP_BUNDLE_ID} and #{SHARE_BUNDLE_ID}, then run 3. Create Certificates.")
+  end
+
+  desc "Create Certificates: distribution certificate (shared with Trio) and App Store profiles"
+  lane :certs do
+    setup_ci if ENV["CI"]
+    connect_api_key
+    match(
+      type: "appstore",
+      readonly: false,
+      force_for_new_devices: false,
+      git_basic_authorization: match_authorization,
+      app_identifier: ALL_BUNDLE_IDS
+    )
+  end
+
+  desc "Build: signed Release IPA with the next TestFlight build number"
+  lane :build_nav2pilot do
+    setup_ci if ENV["CI"]
+    key = connect_api_key
+
+    previous_build_number = latest_testflight_build_number(
+      app_identifier: APP_BUNDLE_ID,
+      api_key: key,
+      initial_build_number: 0
+    )
+    build_number = previous_build_number + 1
+    UI.message("Build number #{build_number}")
+
+    # Certificates and profiles are created by the certs lane; the build only reads them.
+    match(
+      type: "appstore",
+      readonly: true,
+      git_basic_authorization: match_authorization,
+      app_identifier: ALL_BUNDLE_IDS
+    )
+    mapping = Actions.lane_context[SharedValues::MATCH_PROVISIONING_PROFILE_MAPPING]
+
+    update_code_signing_settings(
+      path: PROJECT_PATH,
+      use_automatic_signing: false,
+      team_id: TEAMID,
+      targets: ["Nav2Pilot"],
+      code_sign_identity: "iPhone Distribution",
+      profile_name: mapping[APP_BUNDLE_ID]
+    )
+    update_code_signing_settings(
+      path: PROJECT_PATH,
+      use_automatic_signing: false,
+      team_id: TEAMID,
+      targets: ["Nav2PilotShare"],
+      code_sign_identity: "iPhone Distribution",
+      profile_name: mapping[SHARE_BUNDLE_ID]
+    )
+
+    gym(
+      project: PROJECT_PATH,
+      scheme: "Nav2Pilot",
+      configuration: "Release",
+      export_method: "app-store",
+      destination: "generic/platform=iOS",
+      output_name: "Nav2Pilot.ipa",
+      buildlog_path: "buildlog",
+      # App and extension read CFBundleVersion from CURRENT_PROJECT_VERSION, so both get the same number.
+      xcargs: "CURRENT_PROJECT_VERSION=#{build_number}"
+    )
+
+    copy_artifacts(
+      target_path: "artifacts",
+      artifacts: ["*.mobileprovision", "*.ipa", "*.dSYM.zip"]
+    )
+  end
+
+  desc "Upload the IPA to TestFlight"
+  lane :release do
+    upload_to_testflight(
+      api_key: connect_api_key,
+      ipa: "Nav2Pilot.ipa",
+      skip_waiting_for_build_processing: true,
+      changelog: git_branch + " " + last_git_commit[:abbreviated_commit_hash]
+    )
+  end
+end

@@ -1,0 +1,10 @@
+// Signing. Leave DEVELOPMENT_TEAM empty to build for the simulator.
+// To install on an iPhone, create Config/Local.xcconfig (not committed) with your team ID:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//
+// and, if com.cristianku.* is taken in your team, your own bundle IDs and App Group are needed too
+// (see README "Build for an iPhone").
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"

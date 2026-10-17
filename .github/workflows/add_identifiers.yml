@@ -1,0 +1,41 @@
+name: 2. Add Identifiers
+run-name: Add Identifiers (${{ github.ref_name }})
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/validate_secrets.yml
+    secrets: inherit
+
+  identifiers:
+    name: Identifiers
+    needs: validate
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install fastlane
+        run: bundle install
+
+      - name: Sync clock
+        run: sudo sntp -sS time.windows.com
+
+      - name: Register com.cristianku.nav2pilot and com.cristianku.nav2pilot.share
+        run: bundle exec fastlane identifiers
+        env:
+          TEAMID: ${{ secrets.TEAMID }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          FASTLANE_KEY_ID: ${{ secrets.FASTLANE_KEY_ID }}
+          FASTLANE_ISSUER_ID: ${{ secrets.FASTLANE_ISSUER_ID }}
+          FASTLANE_KEY: ${{ secrets.FASTLANE_KEY }}
+
+      - name: Next step
+        run: |
+          echo "### Manual step" >> "$GITHUB_STEP_SUMMARY"
+          echo "In https://developer.apple.com/account/resources/identifiers create the App Group \`group.com.cristianku.nav2pilot\` and assign it to \`com.cristianku.nav2pilot\` and \`com.cristianku.nav2pilot.share\` (App Groups > Configure). Then run **3. Create Certificates**." >> "$GITHUB_STEP_SUMMARY"
