@@ -5,9 +5,8 @@ on: [workflow_call, workflow_dispatch]
 permissions:
   contents: read
 
-# Uses the distribution certificate already in Match-Secrets (shared with Trio) and creates the
-# App Store profiles of the two Nav2Pilot identifiers. Certificate renewal (nuke) is left to the Trio
-# workflow on purpose: revoking certificates here would also affect Trio.
+# Stores the distribution certificate and App Store profiles for both Nav2Pilot identifiers
+# in the dedicated Match-Secrets-Nav2Pilot repository. This workflow does not revoke certificates.
 jobs:
   validate:
     name: Validate

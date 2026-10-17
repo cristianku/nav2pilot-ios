@@ -230,14 +230,17 @@ extension still sends, using the device list of the comma account.
 
 ### TestFlight (GitHub Actions)
 
-Same approach as the [Trio browser build](https://github.com/nightscout/Trio): fastlane on GitHub
-Actions signs with the certificates stored in the private `<owner>/Match-Secrets` repository and
-uploads to TestFlight. An account that already builds Trio this way reuses everything.
+Fastlane on GitHub Actions signs with the certificates stored in the private
+`<owner>/Match-Secrets-Nav2Pilot` repository and uploads to TestFlight. The signing repository and
+its encryption password are dedicated to Nav2Pilot.
 
 One-time setup:
 
-1. Repository secrets (Settings → Secrets and variables → Actions), same values as for Trio:
-   `TEAMID`, `FASTLANE_KEY_ID`, `FASTLANE_ISSUER_ID`, `FASTLANE_KEY`, `GH_PAT`, `MATCH_PASSWORD`.
+1. Create an empty private `<owner>/Match-Secrets-Nav2Pilot` repository. Set the repository secrets
+   (Settings → Secrets and variables → Actions): `TEAMID`, `FASTLANE_KEY_ID`, `FASTLANE_ISSUER_ID`,
+   `FASTLANE_KEY`, `GH_PAT`, `MATCH_PASSWORD`. `GH_PAT` must have read and write access to the private
+   signing repository. Generate a dedicated `MATCH_PASSWORD` and keep a secure copy; it encrypts
+   the signing files and does not grant GitHub access.
 2. Run **1. Validate Secrets**.
 3. Run **2. Add Identifiers**: registers `com.cristianku.nav2pilot` and `com.cristianku.nav2pilot.share`
    with the App Groups capability.
@@ -246,8 +249,8 @@ One-time setup:
    Store Connect API cannot do this step.
 5. In [App Store Connect](https://appstoreconnect.apple.com/apps) create the app (My Apps → + → New App,
    bundle ID `com.cristianku.nav2pilot`, any SKU). The name must be unique on the App Store.
-6. Run **3. Create Certificates**: App Store profiles for both identifiers. The distribution certificate
-   in Match-Secrets is shared with Trio; this workflow never revokes it (renewal stays with Trio).
+6. Run **3. Create Certificates**: creates the distribution certificate and App Store profiles for
+   both identifiers in `Match-Secrets-Nav2Pilot`. This workflow never revokes existing certificates.
 
 Then **4. Build Nav2Pilot** builds, signs and uploads to TestFlight, using the next TestFlight build
 number. It also runs on the 1st of every month, because TestFlight builds expire after 90 days.

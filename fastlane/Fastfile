@@ -1,7 +1,7 @@
-# Nav2Pilot TestFlight build on GitHub Actions, in the style of the Trio browser build.
+# Nav2Pilot TestFlight build on GitHub Actions.
 # Lanes are run by the workflows in .github/workflows; see README "TestFlight".
 #
-# Secrets (repository secrets, same values as for Trio):
+# Secrets configured in the Nav2Pilot repository:
 #   TEAMID, FASTLANE_KEY_ID, FASTLANE_ISSUER_ID, FASTLANE_KEY, GH_PAT, MATCH_PASSWORD
 
 default_platform(:ios)
@@ -37,7 +37,7 @@ platform :ios do
     Base64.strict_encode64("#{GITHUB_REPOSITORY_OWNER}:#{GH_PAT}")
   end
 
-  desc "Validate Secrets: API key works and Match-Secrets can be decrypted (changes nothing)"
+  desc "Validate Secrets: API key works and Match-Secrets-Nav2Pilot can be decrypted (changes nothing)"
   lane :validate_secrets do
     setup_ci if ENV["CI"]
     connect_api_key
@@ -78,7 +78,7 @@ platform :ios do
                  "#{APP_GROUP} and assign it to #{APP_BUNDLE_ID} and #{SHARE_BUNDLE_ID}, then run 3. Create Certificates.")
   end
 
-  desc "Create Certificates: distribution certificate (shared with Trio) and App Store profiles"
+  desc "Create Certificates: Nav2Pilot distribution certificate and App Store profiles"
   lane :certs do
     setup_ci if ENV["CI"]
     connect_api_key
