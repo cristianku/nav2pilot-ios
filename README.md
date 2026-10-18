@@ -64,6 +64,20 @@ Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through
   <img src="docs/screenshots/devices.png" width="270" alt="Devices tab: comma account, the car and the Mapbox setup">
 </p>
 
+## Landscape, iPad and CarPlay
+
+Turn the iPhone on its side, or use an iPad, and the Send tab switches to two panes: search, destination and
+the send button on the left, the route map on the right.
+
+<p align="center">
+  <img src="docs/screenshots/landscape.png" width="700" alt="Landscape layout: the destination on the left, the route map on the right">
+</p>
+
+CarPlay is not supported yet. CarPlay does not show ordinary apps: an app needs a dedicated car screen built
+from CarPlay templates, and a CarPlay entitlement that Apple grants on request. On Android, Nav2Pilot also
+runs on CarlinKit boxes that run Android (see the
+[Android README](https://github.com/cristianku/nav2pilot#car-screens-carlinkit-android-auto-carplay)).
+
 ## If something doesn't work
 
 - **"The comma token was rejected (HTTP 401)"**: the token has expired. Get a new one at

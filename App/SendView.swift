@@ -7,37 +7,117 @@ struct SendView: View {
     @State private var query = ""
     @FocusState private var searchFocused: Bool
 
+    // narrower than this, or taller than wide, stays the phone layout
+    private static let wideMinWidth: CGFloat = 600
+    // the form's share of a wide screen; the map gets the rest
+    private static let wideFormFraction: CGFloat = 0.42
+
     var body: some View {
         NavigationStack {
+            GeometryReader { geometry in
+                let size = geometry.size
+                if size.width >= SendView.wideMinWidth && size.width > size.height {
+                    wideLayout(size: size)
+                } else {
+                    narrowLayout()
+                }
+            }
+            .background(Theme.background)
+            // the header with the logo replaces the large title
+            .toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    /// Phone held upright: one column, the route between the destination and the device.
+    private func narrowLayout() -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                BrandHeader()
+                    .padding(.leading, 4)
+                searchSection()
+                if !viewModel.choices.isEmpty {
+                    ChoicesCard(viewModel: viewModel)
+                }
+                DestinationCard(viewModel: viewModel)
+                RouteSection(viewModel: viewModel)
+                deviceSection()
+            }
+            .padding(.horizontal, Theme.screenPadding)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SendBar(viewModel: viewModel)
+        }
+    }
+
+    /// Landscape (car screens, iPad, a phone on its side): the form on the left, the map on the right.
+    private func wideLayout(size: CGSize) -> some View {
+        HStack(alignment: .top, spacing: 0) {
             ScrollView {
+                // no logo header: a landscape screen is short, the tab bar already names the app's sections
                 VStack(alignment: .leading, spacing: 20) {
-                    BrandHeader()
-                        .padding(.leading, 4)
                     searchSection()
                     if !viewModel.choices.isEmpty {
                         ChoicesCard(viewModel: viewModel)
                     }
                     DestinationCard(viewModel: viewModel)
-                    RouteSection(viewModel: viewModel)
-                    VStack(alignment: .leading, spacing: 8) {
-                        DeviceCard(viewModel: viewModel, onOpenDevices: openDevices)
-                        Text("The device must be online. It keeps the destination until the car goes offroad or the device restarts.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 4)
-                    }
+                    deviceSection()
                 }
                 .padding(.horizontal, Theme.screenPadding)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
-            .background(Theme.background)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 SendBar(viewModel: viewModel)
             }
-            // the header with the logo replaces the large title
-            .toolbar(.hidden, for: .navigationBar)
+            .frame(width: size.width * SendView.wideFormFraction)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if viewModel.routePlanningAvailable && viewModel.destination != nil {
+                        // the map fills the visible pane; the route list scrolls below it
+                        RouteSection(viewModel: viewModel, mapHeight: max(200, size.height - 60))
+                    } else {
+                        routePlaceholder()
+                    }
+                }
+                .padding(.trailing, Theme.screenPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func routePlaceholder() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SectionLabel("Route")
+            VStack(spacing: 12) {
+                IconBadge(systemName: "map", tint: Theme.brand, background: Theme.brandSoft, size: 56)
+                Text("No route yet")
+                    .font(.headline)
+                Text("Search or share a place: its routes show up here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 32)
+            .padding(.horizontal, 16)
+            .cardStyle()
+        }
+    }
+
+    private func deviceSection() -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DeviceCard(viewModel: viewModel, onOpenDevices: openDevices)
+            Text("The device must be online. It keeps the destination until the car goes offroad or the device restarts.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
         }
     }
 

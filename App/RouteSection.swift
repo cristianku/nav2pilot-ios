@@ -6,6 +6,8 @@ import SwiftUI
 /// What is picked here is what the device follows (sunnypilot setNavRoute).
 struct RouteSection: View {
     let viewModel: MainViewModel
+    /// Taller in the landscape layout, where the map has a pane of its own.
+    var mapHeight: CGFloat = 280
 
     var body: some View {
         if viewModel.routePlanningAvailable && viewModel.destination != nil {
@@ -58,7 +60,7 @@ struct RouteSection: View {
         VStack(alignment: .leading, spacing: 0) {
             if let token = viewModel.mapboxAccessToken() {
                 RouteMap(viewModel: viewModel, accessToken: token)
-                    .frame(height: 280)
+                    .frame(height: mapHeight)
                     .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.cardRadius, topTrailingRadius: Theme.cardRadius, style: .continuous))
             }
             if viewModel.routesLoading {

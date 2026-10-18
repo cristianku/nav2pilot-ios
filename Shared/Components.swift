@@ -665,7 +665,11 @@ struct SendBar: View {
         .padding(.bottom, 10)
         .background(Theme.background)
         .overlay(alignment: .top) {
-            Divider()
+            // in its own VStack: a bare Divider takes the axis of the nearest stack, and in the landscape layout
+            // that is the HStack of the two panes, which turned it into a vertical line across the button
+            VStack(spacing: 0) {
+                Divider()
+            }
         }
     }
 
