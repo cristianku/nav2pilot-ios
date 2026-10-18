@@ -46,8 +46,11 @@ prime, and the car stayed on "Waiting for route". With your own free Mapbox acco
 - the app shows the route on a map: pick one of the alternatives, long-press to add stops;
 - the car computes its route with your Mapbox account instead of comma's service.
 
-The car part needs the sunnypilot build from
-[cristianku/sunnypilot `feature/nav-alpha`](https://github.com/cristianku/sunnypilot/tree/feature/nav-alpha).
+The car part needs one of these two builds, with Nav Alpha and the token support:
+
+- sunnypilot: [cristianku/sunnypilot `feature/nav-alpha`](https://github.com/cristianku/sunnypilot/tree/feature/nav-alpha)
+- openpilot: [cristianku/openpilot `nav-alpha`](https://github.com/cristianku/openpilot/tree/nav-alpha)
+
 On any other software the token simply stays on your phone and everything else works as usual.
 
 Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through it:
@@ -55,7 +58,7 @@ Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through
 1. Create a free Mapbox account. Without a payment card Mapbox only gives you a trial token with low limits;
    with a card you get the free tier, which is plenty for personal use.
 2. Copy the **Default public token** (it starts with `pk.`).
-3. Paste it in the app. The next destination you send takes it to the car as well.
+3. Paste it in the app. From then on it goes to the car by itself, with every destination you send.
 
 <p align="center">
   <img src="docs/screenshots/devices.png" width="270" alt="Devices tab: comma account, the car and the Mapbox setup">
@@ -176,11 +179,13 @@ checked 2026-10-17).
 
 - Routes come from the Directions API with the same profile as the device's navd, `mapbox/driving-traffic`
   (`openpilot/selfdrive/navigation/navd.py`), from the phone's position (location permission "when in use").
-- **Waypoints** need the sunnypilot method `setNavRoute(latitude, longitude, waypoints)` of
+- **Waypoints** need the method `setNavRoute(latitude, longitude, waypoints)`, in
   [cristianku/sunnypilot `feature/nav-alpha`](https://github.com/cristianku/sunnypilot/tree/feature/nav-alpha)
-  (`sunnypilot/navd/athena.py`, `sunnypilot/navd/navd.py`). Stops are sent as stops; for an alternative route
-  the app sends three silent via points on it (at 25 %, 50 % and 75 % of its length), so the device's Mapbox
-  request goes the same way. On comma's Nav Alpha, which has no `setNavRoute` (`-32601`), the app sends the
+  (`sunnypilot/navd/athena.py`, `sunnypilot/navd/navd.py`) and in
+  [cristianku/openpilot `nav-alpha`](https://github.com/cristianku/openpilot/tree/nav-alpha)
+  (`selfdrive/navigation/nav2pilot/athena.py`, `selfdrive/navigation/nav2pilot/navd.py`). Stops are sent as
+  stops; for an alternative route the app sends three silent via points on it (at 25 %, 50 % and 75 % of its
+  length), so the device's Mapbox request goes the same way. On comma's Nav Alpha, which has no `setNavRoute` (`-32601`), the app sends the
   destination alone and says so.
 - Without a payment card Mapbox gives only a trial token with lower limits; with a card the free tiers apply
   ([Mapbox sign-up guide](https://docs.mapbox.com/accounts/guides/signup/)). The setup sheet says so.
@@ -193,15 +198,19 @@ checked 2026-10-17).
 On a device without comma prime (`PrimeType` 0), comma's route service `api.commadotai.com/v1/nav` answered
 **HTTP 403** to every route request (route `0000011a`, 2026-10-17): navd got no route, the map stayed on
 "Waiting for route".
-With the sunnypilot method `setMapboxToken(token)` of `feature/nav-alpha` (`sunnypilot/navd/athena.py`) the
-device stores the user's public token in the `MapboxToken` param and navd asks `api.mapbox.com` directly.
+With the method `setMapboxToken(token)` the device stores the user's public token in the `MapboxToken` param
+and navd asks `api.mapbox.com` directly. It is in two builds:
 
-- The app sends the token when it is saved (to the selected device), and before a destination to a device
-  that does not have this token yet: only a SHA-256 fingerprint per device is kept, in UserDefaults.
-- Devices → Mapbox has "Send token to …" and "Remove token from …" (an empty token: back to comma's service).
-  Removing the token from the iPhone leaves the device's copy.
+- sunnypilot: [cristianku/sunnypilot `feature/nav-alpha`](https://github.com/cristianku/sunnypilot/tree/feature/nav-alpha) (`sunnypilot/navd/athena.py`)
+- openpilot: [cristianku/openpilot `nav-alpha`](https://github.com/cristianku/openpilot/tree/nav-alpha) (`selfdrive/navigation/nav2pilot/athena.py`)
+
+- Nothing to press: the app sends the token when it is saved (to the selected car) and before every
+  destination, silently. The device writes it only when it changed. The `MapboxToken` param survives reboots,
+  but `Params::clearAll` deletes it when the device boots a build that does not define it; the next
+  destination brings it back.
+- **Remove Mapbox token** also sends an empty token to the selected car, which goes back to comma's service.
 - A device without `setMapboxToken` (`-32601`, unmodified openpilot) is not an error: the destination goes out
-  and the feedback is the usual one. Only "Send token to …" shows a short note.
+  and the feedback is the usual one.
 - The map tiles of the device (mapsd) still come from comma (`v1/<dongle_id>/nav/tiles`).
 
 ### sunnylink

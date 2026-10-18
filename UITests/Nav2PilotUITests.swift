@@ -14,22 +14,26 @@ final class Nav2PilotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let field = app.textFields["Address, lat, lng or map link"]
+        let field = app.textFields["Search a place or paste a link"]
         XCTAssertTrue(field.waitForExistence(timeout: 15))
         field.tap()
         field.typeText("45.4642, 9.19\n")
 
         XCTAssertTrue(app.staticTexts[coordinates].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["From: Coordinates"].exists)
+        // where the destination came from is folded under Details
+        app.buttons["Details"].tap()
+        XCTAssertTrue(app.staticTexts["From: Coordinates"].waitForExistence(timeout: 5))
         attachScreenshot(app, "Send")
 
         // without a Mapbox token the route section offers the setup: own account, then the public token
+        // (a simulator where a token was pasted by hand shows the route map instead)
         let setUpMapbox = app.buttons["Set up Mapbox"].firstMatch
-        XCTAssertTrue(setUpMapbox.waitForExistence(timeout: 5))
-        setUpMapbox.tap()
-        XCTAssertTrue(app.buttons["Create a free Mapbox account"].waitForExistence(timeout: 5))
-        attachScreenshot(app, "MapboxSetup")
-        app.buttons["Cancel"].tap()
+        if setUpMapbox.waitForExistence(timeout: 5) {
+            setUpMapbox.tap()
+            XCTAssertTrue(app.buttons["Create a free Mapbox account"].waitForExistence(timeout: 5))
+            attachScreenshot(app, "MapboxSetup")
+            app.buttons["Cancel"].tap()
+        }
 
         // favorites live in the App Group storage and survive between runs
         let alreadyFavorite = app.buttons["Remove from favorites"]
@@ -48,18 +52,21 @@ final class Nav2PilotUITests: XCTestCase {
         // leave no favorite behind for the next run
         favorite.swipeLeft()
         app.buttons["Remove"].tap()
-        XCTAssertTrue(app.staticTexts["No favorites yet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your places, one tap away"].waitForExistence(timeout: 5))
 
         app.tabBars.buttons["Devices"].tap()
-        // "Add token" on a fresh install, "Replace token" once a comma token is stored
-        var tokenButton = app.buttons["Add token"]
-        if !tokenButton.waitForExistence(timeout: 5) {
-            tokenButton = app.buttons["Replace token"]
+        // "Add token" on a fresh install, "Manage" > "Replace token" once a comma token is stored
+        let addToken = app.buttons["Add token"]
+        if addToken.waitForExistence(timeout: 5) {
+            attachScreenshot(app, "Devices")
+            addToken.tap()
+        } else {
+            let manage = app.buttons["Manage"]
+            XCTAssertTrue(manage.exists)
+            attachScreenshot(app, "Devices")
+            manage.tap()
+            app.buttons["Replace token"].tap()
         }
-        XCTAssertTrue(tokenButton.exists)
-        attachScreenshot(app, "Devices")
-
-        tokenButton.tap()
         XCTAssertTrue(app.secureTextFields["JWT"].waitForExistence(timeout: 5))
         attachScreenshot(app, "Token")
         app.buttons["Cancel"].tap()
@@ -75,8 +82,48 @@ final class Nav2PilotUITests: XCTestCase {
         app.open(url)
 
         XCTAssertTrue(app.staticTexts["Garage"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["From: Map link"].exists)
+        app.buttons["Details"].tap()
+        XCTAssertTrue(app.staticTexts["From: Map link"].waitForExistence(timeout: 5))
         attachScreenshot(app, "GeoLink")
+    }
+
+    /// The main screens with a destination and a car, for the README and visual checks.
+    /// Needs a car in the simulator's storage (the comma account, or a demo device written into the
+    /// App Group defaults); without one it is skipped. Nothing is sent: the test never taps Send.
+    func testScreenshotTour() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        app.tabBars.buttons["Devices"].tap()
+        let carActions = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Actions for ")).firstMatch
+        if !carActions.waitForExistence(timeout: 3) {
+            throw XCTSkip("no car stored in this simulator")
+        }
+        attachScreenshot(app, "Tour-Devices")
+
+        guard let url = URL(string: "geo:0,0?q=45.464211,9.191383(Duomo di Milano)") else {
+            return XCTFail("bad URL")
+        }
+        app.open(url)
+        XCTAssertTrue(app.staticTexts["Duomo di Milano"].waitForExistence(timeout: 10))
+        attachScreenshot(app, "Tour-Send")
+        app.buttons["Details"].tap()
+        XCTAssertTrue(app.staticTexts["From: Map link"].waitForExistence(timeout: 5))
+        attachScreenshot(app, "Tour-SendDetails")
+
+        let alreadyFavorite = app.buttons["Remove from favorites"]
+        if !alreadyFavorite.exists {
+            app.buttons["Add to favorites"].tap()
+        }
+        app.tabBars.buttons["Favorites"].tap()
+        let favorite = app.staticTexts["Duomo di Milano"].firstMatch
+        XCTAssertTrue(favorite.waitForExistence(timeout: 5))
+        attachScreenshot(app, "Tour-Favorites")
+
+        // the other tests expect no favorites
+        favorite.swipeLeft()
+        app.buttons["Remove"].tap()
+        XCTAssertTrue(app.staticTexts["Your places, one tap away"].waitForExistence(timeout: 5))
     }
 
     private func attachScreenshot(_ app: XCUIApplication, _ name: String) {

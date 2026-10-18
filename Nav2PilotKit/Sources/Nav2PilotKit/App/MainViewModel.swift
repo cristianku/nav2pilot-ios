@@ -8,27 +8,18 @@ public enum ConnectionState: Equatable {
     case unreachable(String)
 }
 
-/// What the route map needs: the user's Mapbox token, the Directions API and the phone's position,
-/// plus which devices already got the token for their own route requests.
+/// What the route map needs: the user's Mapbox token, the Directions API and the phone's position.
 public struct RoutePlanning {
     public let mapboxTokenStore: TokenStore
     public let verifier: MapboxTokenVerifier
     public let directions: MapboxDirections
     public let location: LocationProvider
-    public let deliveries: MapboxDeliveries
 
-    public init(
-        mapboxTokenStore: TokenStore,
-        verifier: MapboxTokenVerifier,
-        directions: MapboxDirections,
-        location: LocationProvider,
-        deliveries: MapboxDeliveries
-    ) {
+    public init(mapboxTokenStore: TokenStore, verifier: MapboxTokenVerifier, directions: MapboxDirections, location: LocationProvider) {
         self.mapboxTokenStore = mapboxTokenStore
         self.verifier = verifier
         self.directions = directions
         self.location = location
-        self.deliveries = deliveries
     }
 }
 
@@ -73,8 +64,6 @@ public final class MainViewModel {
     public private(set) var mapboxBusy = false
     public private(set) var mapboxMessage = ""
     public var mapboxSheetVisible = false
-    public private(set) var mapboxDeviceBusy = false
-    public private(set) var mapboxDeviceMessage = ""
     public private(set) var routes: [RoutePreview] = []
     public private(set) var selectedRouteIndex = 0
     public private(set) var stops: [Destination] = []
@@ -99,6 +88,8 @@ public final class MainViewModel {
     private let deviceRepository: DeviceRepository
     private let now: () -> Date
     private let routePlanning: RoutePlanning?
+    /// The Mapbox token that goes to the car with every destination, also from the share extension (no route map).
+    private let mapboxTokenStore: TokenStore?
 
     private var resolveGeneration = 0
     private var connectionGeneration = 0
@@ -112,6 +103,7 @@ public final class MainViewModel {
         favoritesRepository: FavoritesRepository,
         deviceRepository: DeviceRepository,
         routePlanning: RoutePlanning? = nil,
+        mapboxTokenStore: TokenStore? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.resolver = resolver
@@ -123,6 +115,11 @@ public final class MainViewModel {
         self.deviceRepository = deviceRepository
         self.now = now
         self.routePlanning = routePlanning
+        if let store = mapboxTokenStore {
+            self.mapboxTokenStore = store
+        } else {
+            self.mapboxTokenStore = routePlanning?.mapboxTokenStore
+        }
         geocoderAvailable = placeSearch.isAvailable()
         copyStoredData()
     }
@@ -283,7 +280,6 @@ public final class MainViewModel {
         copyStoredData()
         connection = .unknown
         feedback = nil
-        mapboxDeviceMessage = ""
         await checkConnection()
     }
 
@@ -323,8 +319,10 @@ public final class MainViewModel {
         }
         sending = true
         feedback = nil
-        // before the destination, so that the first route request of the device already uses the token
-        let mapboxNote = await deliverMapboxTokenIfNeeded(device)
+        // the Mapbox token goes with every destination, before it, so the first route request of the car already uses it
+        if let mapboxToken = mapboxTokenStore?.load() {
+            await sendMapboxToken(mapboxToken, to: device)
+        }
         let waypoints = plannedWaypoints()
         let result: Result<Delivery, TransportError>
         if waypoints.isEmpty {
@@ -342,9 +340,6 @@ public final class MainViewModel {
                 message = "Queued by athena: \(delivery.note)"
             } else if !delivery.note.isEmpty {
                 message = "Destination sent to \(device.displayName()). " + delivery.note
-            }
-            if !mapboxNote.isEmpty {
-                message += " " + mapboxNote
             }
             feedback = SendFeedback(success: true, message: message, time: now())
         case .failure(let error):
@@ -537,8 +532,9 @@ public final class MainViewModel {
             mapboxBusy = false
             mapboxSheetVisible = false
             hasMapboxToken = true
-            if hasToken && deviceRepository.selectedDevice() != nil {
-                await sendMapboxToken(reportUnsupported: false)
+            // the selected car gets it right away; if it is off, with the next destination
+            if let device = deviceRepository.selectedDevice() {
+                await sendMapboxToken(token, to: device)
             }
             await refreshRoutes()
         case .rejected(let code):
@@ -550,121 +546,24 @@ public final class MainViewModel {
         }
     }
 
-    /// Removes the token from this phone only: the devices keep their copy (see removeMapboxTokenFromDevice).
-    public func removeMapboxToken() {
+    /// Removes the token from this phone and from the selected car, which goes back to comma's route service.
+    public func removeMapboxToken() async {
         routePlanning?.mapboxTokenStore.clear()
         hasMapboxToken = false
-        mapboxDeviceMessage = ""
         routesGeneration += 1
         routes = []
         routesLoading = false
         routesMessage = ""
-    }
-
-    /// Sends the stored Mapbox token to the selected device, which then asks Mapbox for its routes itself.
-    public func sendMapboxTokenToDevice() async {
-        await sendMapboxToken(reportUnsupported: true)
-    }
-
-    /// `reportUnsupported`: a device without setMapboxToken (unmodified openpilot) gets a note only when the user
-    /// asked for the token to be sent; it is never an error.
-    private func sendMapboxToken(reportUnsupported: Bool) async {
-        guard let planning = routePlanning, let device = deviceRepository.selectedDevice() else {
-            return
-        }
-        guard let token = planning.mapboxTokenStore.load() else {
-            return
-        }
-        if mapboxDeviceBusy {
-            return
-        }
-        mapboxDeviceBusy = true
-        mapboxDeviceMessage = ""
-        let result = await transports.forDevice(device).setMapboxToken(device, token)
-        switch result {
-        case .success(let delivery):
-            if delivery.queued {
-                mapboxDeviceMessage = "Queued by athena: \(delivery.note)"
-            } else {
-                planning.deliveries.markDelivered(device.dongleId, token: token)
-                mapboxDeviceMessage = "Mapbox token sent to \(device.displayName()): it computes its routes with your Mapbox account."
-            }
-        case .failure(let error):
-            if case .methodNotAvailable = error {
-                if reportUnsupported {
-                    mapboxDeviceMessage = MainViewModel.unsupportedNote(device)
-                }
-            } else {
-                mapboxDeviceMessage = MainViewModel.mapboxNotSent(error)
-            }
-        }
-        mapboxDeviceBusy = false
-    }
-
-    /// Removes the Mapbox token from the selected device: it goes back to comma's route service.
-    public func removeMapboxTokenFromDevice() async {
-        guard let planning = routePlanning, let device = deviceRepository.selectedDevice() else {
-            return
-        }
-        if mapboxDeviceBusy {
-            return
-        }
-        mapboxDeviceBusy = true
-        mapboxDeviceMessage = ""
-        let result = await transports.forDevice(device).setMapboxToken(device, "")
-        switch result {
-        case .success(let delivery):
-            planning.deliveries.forget(device.dongleId)
-            if delivery.queued {
-                mapboxDeviceMessage = "Queued by athena: \(delivery.note)"
-            } else {
-                mapboxDeviceMessage = "Mapbox token removed from \(device.displayName()): it uses comma's route service again."
-            }
-        case .failure(let error):
-            // without setMapboxToken the device cannot have a token: nothing to remove
-            if case .methodNotAvailable = error {
-                planning.deliveries.forget(device.dongleId)
-                mapboxDeviceMessage = MainViewModel.unsupportedNote(device)
-            } else {
-                mapboxDeviceMessage = "Mapbox token not removed. " + TransportErrorText.describe(error)
-            }
-        }
-        mapboxDeviceBusy = false
-    }
-
-    /// Delivers the Mapbox token to a device that does not have this token yet. Returns a note for the send
-    /// feedback, "" when there is nothing to tell.
-    private func deliverMapboxTokenIfNeeded(_ device: PairedDevice) async -> String {
-        guard let planning = routePlanning, let token = planning.mapboxTokenStore.load() else {
-            return ""
-        }
-        if planning.deliveries.isDelivered(device.dongleId, token: token) {
-            return ""
-        }
-        let result = await transports.forDevice(device).setMapboxToken(device, token)
-        switch result {
-        case .success(let delivery):
-            // a queued token is sent again with the next destination
-            if delivery.queued {
-                return ""
-            }
-            planning.deliveries.markDelivered(device.dongleId, token: token)
-            return "Your Mapbox token was sent too."
-        case .failure(let error):
-            // unmodified openpilot has no setMapboxToken: the destination goes out as usual, without a word
-            if case .methodNotAvailable = error {
-                return ""
-            }
-            return MainViewModel.mapboxNotSent(error)
+        if let device = deviceRepository.selectedDevice() {
+            await sendMapboxToken("", to: device)
         }
     }
 
-    static func mapboxNotSent(_ error: TransportError) -> String {
-        return "Mapbox token not sent. " + TransportErrorText.describe(error)
-    }
-
-    static func unsupportedNote(_ device: PairedDevice) -> String {
-        return "\(device.displayName()) takes no Mapbox token (its software has no setMapboxToken): it uses comma's route service."
+    /// The car asks Mapbox for its routes with this token ("" removes it). Silent on purpose: a car that is off,
+    /// or runs software without setMapboxToken (unmodified openpilot), keeps routing as before, and the token
+    /// goes again with the next destination.
+    private func sendMapboxToken(_ token: String, to device: PairedDevice) async {
+        _ = await transports.forDevice(device).setMapboxToken(device, token)
     }
 
     /// Route previews from the phone's position to the destination through the stops.

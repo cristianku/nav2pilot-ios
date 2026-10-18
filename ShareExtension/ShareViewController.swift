@@ -134,34 +134,43 @@ struct ShareView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if viewModel.resolving {
-                    Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    if viewModel.resolving {
                         HStack(spacing: 12) {
                             ProgressView()
                             Text("Finding the location…")
                                 .foregroundStyle(.secondary)
                         }
+                        .padding(16)
+                        .cardStyle()
                     }
-                }
-                if !viewModel.resolveError.isEmpty {
-                    Section {
-                        Text(viewModel.resolveError)
-                            .foregroundStyle(.red)
+                    if !viewModel.resolveError.isEmpty {
+                        Label(viewModel.resolveError, systemImage: "exclamationmark.circle.fill")
+                            .foregroundStyle(Theme.error)
+                            .padding(16)
+                            .cardStyle()
                     }
+                    if !viewModel.choices.isEmpty {
+                        ChoicesCard(viewModel: viewModel)
+                    }
+                    if !viewModel.resolving && viewModel.resolveError.isEmpty {
+                        DestinationCard(viewModel: viewModel, showsMapLinks: false, allowsClear: false)
+                    }
+                    DeviceCard(viewModel: viewModel, onOpenDevices: nil, showsClearOnDevice: false)
                 }
-                if !viewModel.choices.isEmpty {
-                    ChoicesSection(viewModel: viewModel)
-                }
-                if !viewModel.resolving && viewModel.resolveError.isEmpty {
-                    DestinationSection(viewModel: viewModel, showsMapLinks: false, allowsClear: false)
-                }
-                DeviceSection(viewModel: viewModel, onOpenDevices: nil)
-                SendActionsSection(viewModel: viewModel, showsClearOnDevice: false)
+                .padding(.horizontal, Theme.screenPadding)
+                .padding(.vertical, 16)
             }
-            .navigationTitle("Nav2Pilot")
+            .background(Theme.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                SendBar(viewModel: viewModel)
+            }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    BrandHeader(logoSize: 26, titleFont: .headline)
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onDone)
                 }

@@ -60,6 +60,9 @@ struct RootView: View {
                 }
                 .tag(Tab.devices)
         }
+        // a solid tab bar in the app colours instead of the grey system material
+        .toolbarBackground(Theme.card, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
         .onChange(of: viewModel.showSendTabRequest) {
             tab = .send
         }

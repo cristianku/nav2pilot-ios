@@ -9,17 +9,19 @@ struct RouteSection: View {
 
     var body: some View {
         if viewModel.routePlanningAvailable && viewModel.destination != nil {
-            Section {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionLabel("Route")
                 if viewModel.hasMapboxToken {
                     plannedRoute()
+                        .cardStyle()
+                    Text("Long-press the map to add a stop. The device follows the route you pick: through your stops, or through points of the alternative.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                        .padding(.top, 2)
                 } else {
                     setup()
-                }
-            } header: {
-                Text("Route")
-            } footer: {
-                if viewModel.hasMapboxToken {
-                    Text("Long-press the map to add a stop. The device follows the route you pick: through your stops, or through points of the alternative.")
+                        .cardStyle()
                 }
             }
             // the first plan, and a new one for every new destination
@@ -29,66 +31,102 @@ struct RouteSection: View {
         }
     }
 
+    /// Optional: a compact prompt, so it does not stand between the destination and the send button.
     private func setup() -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Pick the route and add stops on a map. It uses your own free Mapbox account, the same map service as the device.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack(spacing: 16) {
+            IconBadge(systemName: "map", tint: Theme.brand, background: Theme.brandSoft)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Route preview")
+                    .font(.subheadline.weight(.semibold))
+                Text("Optional, with a free Mapbox account.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
             Button("Set up Mapbox") {
                 viewModel.showMapboxSheet()
             }
             .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .controlSize(.small)
+            .fixedSize()
         }
-        .padding(.vertical, 4)
+        .padding(16)
     }
 
-    @ViewBuilder
     private func plannedRoute() -> some View {
-        if let token = viewModel.mapboxAccessToken() {
-            RouteMap(viewModel: viewModel, accessToken: token)
-                .frame(height: 300)
-                .listRowInsets(EdgeInsets())
-        }
-        if viewModel.routesLoading {
-            HStack(spacing: 12) {
-                ProgressView()
-                Text("Computing routes…")
-                    .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 0) {
+            if let token = viewModel.mapboxAccessToken() {
+                RouteMap(viewModel: viewModel, accessToken: token)
+                    .frame(height: 280)
+                    .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.cardRadius, topTrailingRadius: Theme.cardRadius, style: .continuous))
             }
-        }
-        if !viewModel.routesMessage.isEmpty {
-            Text(viewModel.routesMessage)
-                .font(.footnote)
-                .foregroundStyle(.red)
-        }
-        ForEach(0..<viewModel.routes.count, id: \.self) { index in
-            RouteRow(
-                route: viewModel.routes[index],
-                index: index,
-                selected: index == viewModel.selectedRouteIndex,
-                onSelect: {
-                    viewModel.selectRoute(index)
+            if viewModel.routesLoading {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Computing routes…")
+                        .foregroundStyle(.secondary)
                 }
-            )
-        }
-        ForEach(0..<viewModel.stops.count, id: \.self) { index in
-            let stop = viewModel.stops[index]
-            HStack {
-                Label(stop.name, systemImage: "\(index + 1).circle.fill")
-                Spacer()
-                Text(stop.coordinatesText())
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-                Button {
-                    Task {
-                        await viewModel.removeStop(at: index)
+                .padding(16)
+            }
+            if !viewModel.routesMessage.isEmpty {
+                Label(viewModel.routesMessage, systemImage: "exclamationmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.error)
+                    .padding(16)
+            }
+            ForEach(0..<viewModel.routes.count, id: \.self) { index in
+                if index > 0 {
+                    Divider()
+                        .padding(.leading, 52)
+                }
+                RouteRow(
+                    route: viewModel.routes[index],
+                    index: index,
+                    selected: index == viewModel.selectedRouteIndex,
+                    onSelect: {
+                        viewModel.selectRoute(index)
                     }
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Remove \(stop.name)")
+                )
+            }
+            if !viewModel.stops.isEmpty {
+                Divider()
+                Text("Stops")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
+            ForEach(0..<viewModel.stops.count, id: \.self) { index in
+                let stop = viewModel.stops[index]
+                HStack(spacing: 12) {
+                    Image(systemName: "\(index + 1).circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.white, .orange)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(stop.name)
+                        Text(stop.coordinatesText())
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        Task {
+                            await viewModel.removeStop(at: index)
+                        }
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(Theme.error)
+                            .frame(width: 44, height: 44)
+                            .accessibilityLabel("Remove stop \(index + 1), \(stop.name)")
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
+                .padding(.leading, 16)
+                .padding(.trailing, 6)
+                .padding(.vertical, 2)
             }
         }
     }
@@ -105,20 +143,28 @@ private struct RouteRow: View {
             HStack(spacing: 12) {
                 if selected {
                     Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
                         .foregroundStyle(.tint)
                 } else {
                     Image(systemName: "circle")
+                        .font(.title3)
                         .foregroundStyle(.secondary)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(RouteFormatting.duration(route.durationSeconds) + " · " + RouteFormatting.distance(route.distanceMeters))
-                        .foregroundStyle(.primary)
+                        .font(selected ? .body.weight(.semibold) : .body)
+                        .foregroundStyle(selected ? .primary : .secondary)
                     Text(subtitle())
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -235,6 +281,11 @@ private struct RouteMap: View {
             points.append(CLLocationCoordinate2D(latitude: origin.latitude, longitude: origin.longitude))
         }
         if points.isEmpty {
+            return
+        }
+        // only the destination (no routes yet): an overview of one point would zoom in to the maximum
+        if points.count == 1 {
+            viewport = .camera(center: points[0], zoom: 13)
             return
         }
         viewport = .overview(geometry: MultiPoint(points), geometryPadding: EdgeInsets(top: 40, leading: 30, bottom: 40, trailing: 30))

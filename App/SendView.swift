@@ -9,26 +9,47 @@ struct SendView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                searchSection()
-                if !viewModel.choices.isEmpty {
-                    ChoicesSection(viewModel: viewModel)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    BrandHeader()
+                        .padding(.leading, 4)
+                    searchSection()
+                    if !viewModel.choices.isEmpty {
+                        ChoicesCard(viewModel: viewModel)
+                    }
+                    DestinationCard(viewModel: viewModel)
+                    RouteSection(viewModel: viewModel)
+                    VStack(alignment: .leading, spacing: 8) {
+                        DeviceCard(viewModel: viewModel, onOpenDevices: openDevices)
+                        Text("The device must be online. It keeps the destination until the car goes offroad or the device restarts.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 4)
+                    }
                 }
-                DestinationSection(viewModel: viewModel)
-                RouteSection(viewModel: viewModel)
-                DeviceSection(viewModel: viewModel, onOpenDevices: openDevices)
-                SendActionsSection(viewModel: viewModel)
+                .padding(.horizontal, Theme.screenPadding)
+                .padding(.top, 8)
+                .padding(.bottom, 16)
             }
-            .navigationTitle("Nav2Pilot")
+            .scrollDismissesKeyboard(.interactively)
+            .background(Theme.background)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                SendBar(viewModel: viewModel)
+            }
+            // the header with the logo replaces the large title
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
     private func searchSection() -> some View {
-        Section {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Where to?")
+                .font(.title3.weight(.semibold))
+                .padding(.leading, 4)
+            HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField("Address, lat, lng or map link", text: $query)
+                TextField("Search a place or paste a link", text: $query)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -47,15 +68,29 @@ struct SendView: View {
                             .accessibilityLabel("Clear search")
                     }
                     .buttonStyle(.borderless)
+                    Button {
+                        runSearch(query)
+                    } label: {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.title2)
+                            .accessibilityLabel("Search")
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
-            HStack {
-                Button("Search") {
-                    runSearch(query)
-                }
-                .buttonStyle(.borderless)
-                .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.resolving)
-                Spacer()
+            .padding(.horizontal, 14)
+            .frame(minHeight: 50)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(searchFocused ? Color.accentColor : Theme.cardBorder, lineWidth: searchFocused ? 1.5 : 1)
+            )
+            HStack(spacing: 10) {
+                Text("Address, coordinates (lat, lng) or map link")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+                Spacer(minLength: 0)
                 // PasteButton reads the clipboard only when tapped, without the iOS paste permission prompt.
                 PasteButton(payloadType: String.self) { strings in
                     guard let text = strings.first else {
@@ -68,12 +103,16 @@ struct SendView: View {
                 }
                 .labelStyle(.titleAndIcon)
                 .buttonBorderShape(.capsule)
+                .controlSize(.small)
+                // secondary to the search: neutral instead of the send blue
+                .tint(Theme.neutralAction)
                 .disabled(viewModel.resolving)
             }
             if !viewModel.resolveError.isEmpty {
-                Text(viewModel.resolveError)
+                Label(viewModel.resolveError, systemImage: "exclamationmark.circle.fill")
                     .font(.footnote)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Theme.error)
+                    .padding(.horizontal, 4)
             }
         }
     }

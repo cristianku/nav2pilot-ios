@@ -3,70 +3,204 @@ import SwiftUI
 
 struct DevicesView: View {
     @Bindable var viewModel: MainViewModel
-    @State private var addDeviceVisible = false
+    @State private var connectionDetailsExpanded = false
+    @State private var deviceToRemove: PairedDevice?
 
     var body: some View {
         NavigationStack {
             Form {
-                accountSection()
-                devicesSection()
-                Section {
-                    Button {
-                        addDeviceVisible = true
-                    } label: {
-                        Label("Add device by dongle ID", systemImage: "plus")
-                    }
+                // connected: the car comes first; otherwise the account is the next step
+                if viewModel.hasToken {
+                    carSection()
+                    accountSection()
+                } else {
+                    accountSection()
+                    carSection()
                 }
                 mapboxSection()
-                backendsSection()
+                connectionSection()
+                aboutSection()
             }
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
             .navigationTitle("Devices")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    if viewModel.refreshingDevices {
-                        ProgressView()
-                    } else {
-                        Button {
-                            Task {
-                                await viewModel.refreshDevices()
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .accessibilityLabel("Refresh devices from comma")
-                        }
-                        .disabled(!viewModel.hasToken)
-                    }
-                }
-            }
             .sheet(isPresented: $viewModel.tokenSheetVisible) {
                 TokenSheet(viewModel: viewModel)
             }
-            .sheet(isPresented: $addDeviceVisible) {
-                AddDeviceSheet(viewModel: viewModel)
+            .confirmationDialog(removeTitle(), isPresented: removeDialogBinding(), titleVisibility: .visible) {
+                Button("Remove", role: .destructive) {
+                    if let device = deviceToRemove {
+                        Task {
+                            await viewModel.removeDevice(device.dongleId)
+                        }
+                    }
+                    deviceToRemove = nil
+                }
+                Button("Cancel", role: .cancel) {
+                    deviceToRemove = nil
+                }
+            } message: {
+                Text(removeMessage())
             }
         }
     }
 
-    private func accountSection() -> some View {
-        Section("comma account") {
+    // MARK: - Car
+
+    private func carSection() -> some View {
+        Section {
+            if viewModel.devices.isEmpty {
+                emptyCar()
+            }
+            ForEach(viewModel.devices) { device in
+                let selected = device.dongleId == viewModel.selectedDongleId
+                HStack(spacing: 4) {
+                    DeviceRow(
+                        device: device,
+                        selected: selected,
+                        // nothing to choose with a single car
+                        showsSelection: viewModel.devices.count > 1
+                    ) {
+                        Task {
+                            await viewModel.selectDevice(device.dongleId)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                    deviceMenu(device)
+                }
+            }
+        } header: {
+            if viewModel.devices.count > 1 {
+                Text("Your cars")
+            } else {
+                Text("Your car")
+            }
+        } footer: {
+            if !viewModel.devicesMessage.isEmpty {
+                Text(viewModel.devicesMessage)
+            }
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    @ViewBuilder
+    private func emptyCar() -> some View {
+        HStack(spacing: 14) {
+            IconBadge(systemName: "car.fill", tint: .secondary, background: Theme.mutedFill)
             if viewModel.hasToken {
-                Label("Token stored in the iOS Keychain", systemImage: "lock.fill")
-                if !viewModel.accountEmail.isEmpty {
-                    Text(viewModel.accountEmail)
-                        .foregroundStyle(.secondary)
-                }
-                Text(expiryText())
-                    .font(.footnote)
+                Text("No car on this comma account yet.")
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Button("Replace token") {
-                    viewModel.showTokenSheet()
+            } else {
+                Text("Connect your comma account above to see your car.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        if viewModel.hasToken {
+            refreshButton()
+        }
+    }
+
+    private func refreshButton() -> some View {
+        Button {
+            Task {
+                await viewModel.refreshDevices()
+            }
+        } label: {
+            HStack {
+                Label("Refresh from comma account", systemImage: "arrow.clockwise")
+                if viewModel.refreshingDevices {
+                    Spacer()
+                    ProgressView()
                 }
-                Button("Remove token", role: .destructive) {
-                    viewModel.removeToken()
+            }
+        }
+        .disabled(viewModel.refreshingDevices)
+    }
+
+    private func deviceMenu(_ device: PairedDevice) -> some View {
+        Menu {
+            Button {
+                Task {
+                    await viewModel.refreshDevices()
+                }
+            } label: {
+                Label("Refresh from comma account", systemImage: "arrow.clockwise")
+            }
+            .disabled(!viewModel.hasToken || viewModel.refreshingDevices)
+            Button(role: .destructive) {
+                deviceToRemove = device
+            } label: {
+                Label("Remove car", systemImage: "trash")
+            }
+        } label: {
+            if viewModel.refreshingDevices {
+                ProgressView()
+                    .frame(width: 44, height: 44)
+            } else {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .accessibilityLabel("Actions for " + CarName.of(device))
+            }
+        }
+    }
+
+    private func removeDialogBinding() -> Binding<Bool> {
+        return Binding(
+            get: {
+                return deviceToRemove != nil
+            },
+            set: { visible in
+                if !visible {
+                    deviceToRemove = nil
+                }
+            }
+        )
+    }
+
+    private func removeTitle() -> String {
+        if let device = deviceToRemove {
+            return "Remove " + CarName.of(device) + "?"
+        }
+        return "Remove car?"
+    }
+
+    private func removeMessage() -> String {
+        if let device = deviceToRemove, device.addedManually {
+            return "It was added by hand, so it does not come back from the comma account."
+        }
+        return "It comes back with Refresh from comma account."
+    }
+
+    // MARK: - Account
+
+    private func accountSection() -> some View {
+        Section {
+            if viewModel.hasToken {
+                HStack(alignment: .center, spacing: 12) {
+                    accountStatus()
+                    Spacer(minLength: 8)
+                    Menu("Manage") {
+                        Button("Replace token") {
+                            viewModel.showTokenSheet()
+                        }
+                        Button("Remove token", role: .destructive) {
+                            viewModel.removeToken()
+                        }
+                    }
                 }
             } else {
-                Text("Sign in at jwt.comma.ai with the account your device is paired to, copy the token and paste it here.")
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Connect your comma account")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Sign in at jwt.comma.ai with the account your device is paired to, copy the token and paste it here.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
                 Button("Add token") {
                     viewModel.showTokenSheet()
                 }
@@ -74,158 +208,229 @@ struct DevicesView: View {
                     Link("Open jwt.comma.ai", destination: url)
                 }
             }
+        } header: {
+            Text("comma account")
+        } footer: {
+            if viewModel.hasToken {
+                Text("Stored in the iOS Keychain of this iPhone only.")
+            }
         }
+        .listRowBackground(Theme.card)
+    }
+
+    /// "Saved", not "connected": the token is only checked when it is added.
+    private func accountStatus() -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            if tokenExpired() {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.warning)
+            } else {
+                Image(systemName: "lock.fill")
+                    .foregroundStyle(Theme.success)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                if tokenExpired() {
+                    Text("Access needs renewal")
+                } else {
+                    Text("Credentials saved")
+                }
+                if !viewModel.accountEmail.isEmpty {
+                    Text(viewModel.accountEmail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Text(expiryText())
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func tokenExpired() -> Bool {
+        guard let expiry = viewModel.tokenExpirySeconds else {
+            return false
+        }
+        return TimeInterval(expiry) < Date().timeIntervalSince1970
     }
 
     private func expiryText() -> String {
         guard let expiry = viewModel.tokenExpirySeconds else {
             return "Expiry not readable from the token."
         }
-        if TimeInterval(expiry) < Date().timeIntervalSince1970 {
+        if tokenExpired() {
             return "Expired on " + Formatting.date(epochSeconds: expiry) + ". Generate a new token."
         }
         return "Expires " + Formatting.date(epochSeconds: expiry)
     }
 
-    private func devicesSection() -> some View {
-        Section {
-            if viewModel.devices.isEmpty {
-                Text("No devices. Refresh after adding a token, or add one by dongle ID.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(viewModel.devices) { device in
-                DeviceRow(device: device, selected: device.dongleId == viewModel.selectedDongleId) {
-                    Task {
-                        await viewModel.selectDevice(device.dongleId)
-                    }
-                }
-                .swipeActions {
-                    if device.addedManually {
-                        Button(role: .destructive) {
-                            Task {
-                                await viewModel.removeDevice(device.dongleId)
-                            }
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                    }
-                }
-            }
-        } header: {
-            Text("Devices")
-        } footer: {
-            if !viewModel.devicesMessage.isEmpty {
-                Text(viewModel.devicesMessage)
-            }
-        }
-    }
+    // MARK: - Mapbox
 
     private func mapboxSection() -> some View {
         Section {
             if viewModel.hasMapboxToken {
-                Label("Mapbox token stored in the iOS Keychain", systemImage: "lock.fill")
-                if let device = selectedDevice() {
-                    Button("Send token to \(device.displayName())") {
-                        Task {
-                            await viewModel.sendMapboxTokenToDevice()
-                        }
-                    }
-                    .disabled(viewModel.mapboxDeviceBusy || !viewModel.hasToken)
-                    Button("Remove token from \(device.displayName())", role: .destructive) {
-                        Task {
-                            await viewModel.removeMapboxTokenFromDevice()
-                        }
-                    }
-                    .disabled(viewModel.mapboxDeviceBusy || !viewModel.hasToken)
-                }
-                if viewModel.mapboxDeviceBusy {
-                    ProgressView()
-                }
-                if !viewModel.mapboxDeviceMessage.isEmpty {
-                    Text(viewModel.mapboxDeviceMessage)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                Label {
+                    Text("Mapbox token saved")
+                } icon: {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(Theme.success)
                 }
                 Button("Replace Mapbox token") {
                     viewModel.showMapboxSheet()
                 }
                 Button("Remove Mapbox token", role: .destructive) {
-                    viewModel.removeMapboxToken()
+                    Task {
+                        await viewModel.removeMapboxToken()
+                    }
                 }
             } else {
-                Text("With your own free Mapbox account the device computes its routes with Mapbox instead of comma's route service, and the Send tab shows the routes on a map, to pick one and add stops.")
-                    .font(.subheadline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mapbox routes (optional)")
+                        .font(.subheadline.weight(.semibold))
+                    Text("With your own free Mapbox account the car computes its routes with Mapbox instead of comma's route service, and the Send tab shows the routes on a map, to pick one and add stops.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 2)
                 Button("Set up Mapbox") {
                     viewModel.showMapboxSheet()
                 }
             }
         } header: {
-            Text("Mapbox")
+            Text("Maps and routes")
         } footer: {
             if viewModel.hasMapboxToken {
-                Text("The device gets the token with the next destination you send, or now with the button. Removing it from this iPhone leaves the copy on the device.")
+                Text("Stored in the iOS Keychain. Your car gets the token automatically with every destination you send. Removing it here also removes it from the selected car.")
             }
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    // MARK: - Connection and about
+
+    /// How the app reaches the car, folded: not needed day to day.
+    private func connectionSection() -> some View {
+        Section {
+            DisclosureGroup("Connection details", isExpanded: $connectionDetailsExpanded) {
+                // the technical identity of the selected car, kept out of the day-to-day view
+                if let device = viewModel.selectedDevice() {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(CarName.of(device))
+                            .font(.subheadline.weight(.semibold))
+                        Text("Dongle ID " + device.dongleId)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        if case .online(let status) = viewModel.connection {
+                            Text(software(status))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("comma athena: available")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Sends setNavDestination / clearNavDestination to the device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("sunnylink: not available")
+                        .font(.subheadline.weight(.semibold))
+                    Text(SunnylinkTransport.reason)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .listRowBackground(Theme.card)
+    }
+
+    private func aboutSection() -> some View {
+        Section {
+            VStack(spacing: 6) {
+                BrandLogo(size: 68)
+                    .padding(.bottom, 4)
+                Text("Nav2Pilot")
+                    .font(.headline)
+                if !appVersion().isEmpty {
+                    Text("Version " + appVersion())
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Text("An independent project, not affiliated with comma.ai or sunnypilot.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+            .accessibilityElement(children: .combine)
         }
     }
 
-    /// From the observed list, so the section follows a change of device.
-    private func selectedDevice() -> PairedDevice? {
-        for device in viewModel.devices {
-            if device.dongleId == viewModel.selectedDongleId {
-                return device
-            }
+    private func software(_ status: DeviceStatus) -> String {
+        var text = "Software " + status.version
+        if !status.branch.isEmpty {
+            text += " (" + status.branch + ")"
         }
-        return nil
+        return text
     }
 
-    private func backendsSection() -> some View {
-        Section("Backends") {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("comma athena: available")
-                    .font(.subheadline.weight(.semibold))
-                Text("Sends setNavDestination / clearNavDestination to the device.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text("sunnylink: not available")
-                    .font(.subheadline.weight(.semibold))
-                Text(SunnylinkTransport.reason)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
+    private func appVersion() -> String {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+            return version
         }
+        return ""
     }
 }
 
 private struct DeviceRow: View {
     let device: PairedDevice
     let selected: Bool
+    let showsSelection: Bool
     let onSelect: () -> Void
 
     var body: some View {
-        Button(action: onSelect) {
-            HStack(spacing: 12) {
+        if showsSelection {
+            Button(action: onSelect) {
+                content()
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+        } else {
+            content()
+        }
+    }
+
+    private func content() -> some View {
+        HStack(spacing: 14) {
+            if showsSelection {
                 if selected {
                     Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
                         .foregroundStyle(.tint)
                 } else {
                     Image(systemName: "circle")
+                        .font(.title3)
                         .foregroundStyle(.secondary)
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(device.displayName())
-                        .foregroundStyle(.primary)
-                    Text(device.dongleId)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.secondary)
-                    Text(details())
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            } else {
+                IconBadge(systemName: "car.fill", tint: Color.accentColor, background: Theme.accentSoft)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(CarName.of(device))
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(details())
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .padding(.vertical, 2)
     }
 
     private func details() -> String {
@@ -243,6 +448,7 @@ private struct DeviceRow: View {
         }
         return text
     }
+
 }
 
 private struct TokenSheet: View {
@@ -303,57 +509,6 @@ private struct TokenSheet: View {
                 }
             }
             .interactiveDismissDisabled(viewModel.accountBusy)
-        }
-    }
-}
-
-private struct AddDeviceSheet: View {
-    let viewModel: MainViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var dongleId = ""
-    @State private var alias = ""
-    @State private var error = ""
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Dongle ID (16 hex characters)", text: $dongleId)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .font(.body.monospaced())
-                    TextField("Name (optional)", text: $alias)
-                } footer: {
-                    Text("Backend: comma athena. The dongle ID is in the device settings.")
-                }
-                if !error.isEmpty {
-                    Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-            .navigationTitle("Add device")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        Task {
-                            let result = await viewModel.addManualDevice(dongleIdText: dongleId, alias: alias)
-                            if result.isEmpty {
-                                dismiss()
-                            } else {
-                                error = result
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

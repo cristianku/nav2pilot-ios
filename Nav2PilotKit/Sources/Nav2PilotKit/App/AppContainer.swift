@@ -31,17 +31,17 @@ public enum AppContainer {
             placeSearch: placeSearch
         )
 
+        // in the shared Keychain group, so the share extension sends it to the car too
+        let mapboxTokenStore = TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
         var routePlanning: RoutePlanning?
         if withRoutePlanning {
-            let mapboxTokenStore = TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
             routePlanning = RoutePlanning(
                 mapboxTokenStore: mapboxTokenStore,
                 verifier: MapboxTokenVerifier(http: httpClient),
                 directions: MapboxDirections(http: httpClient, tokenProvider: {
                     return mapboxTokenStore.load()
                 }),
-                location: CoreLocationProvider(),
-                deliveries: MapboxDeliveries(store: dataStore)
+                location: CoreLocationProvider()
             )
         }
 
@@ -52,7 +52,8 @@ public enum AppContainer {
             tokenStore: tokenStore,
             favoritesRepository: FavoritesRepository(store: dataStore),
             deviceRepository: DeviceRepository(store: dataStore),
-            routePlanning: routePlanning
+            routePlanning: routePlanning,
+            mapboxTokenStore: mapboxTokenStore
         )
     }
 
