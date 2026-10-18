@@ -137,6 +137,12 @@ public final class CommaAthenaTransport: NavigationTransport {
 
     public static let noWaypointsNote = "The device has no waypoint support (setNavRoute): it got the destination only and picks its own route."
 
+    public func setMapboxToken(_ device: PairedDevice, _ token: String) async -> Result<Delivery, TransportError> {
+        let params: [String: Any] = ["token": token]
+        let rpcResult = await callAthena(device, method: CommaEndpoints.methodSetMapboxToken, params: params)
+        return interpretCommandResult(rpcResult, method: CommaEndpoints.methodSetMapboxToken)
+    }
+
     public func clearDestination(_ device: PairedDevice) async -> Result<Delivery, TransportError> {
         let rpcResult = await callAthena(device, method: CommaEndpoints.methodClearNavDestination, params: nil)
         return interpretCommandResult(rpcResult, method: CommaEndpoints.methodClearNavDestination)

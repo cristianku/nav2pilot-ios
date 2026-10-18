@@ -1,17 +1,91 @@
 # Nav2Pilot for iOS
 
-Send navigation destinations from your iPhone to a comma device running **openpilot** or **sunnypilot**
-with **Nav Alpha**.
+**Send a destination from your iPhone to your comma device in a couple of taps.**
 
-Share a place from Google Maps or Apple Maps (or type an address, coordinates or a map link), pick your
-device, tap **Send**. Nav2Pilot calls the device's `setNavDestination` remote method through comma's
-athena service.
+Find a place in Google Maps or Apple Maps, tap **Share → Nav2Pilot**, pick your car, done: the destination
+shows up on your comma device running openpilot or sunnypilot with Nav Alpha. No typing on the car screen.
+
+<p align="center">
+  <img src="docs/screenshots/send.png" width="270" alt="A place shared from Google Maps, ready to be sent to the car">
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/sent.png" width="270" alt="The destination sent to the car, which is online">
+</p>
+
+## Try it on TestFlight
+
+Nav2Pilot for iOS is in beta on TestFlight. Want to try it? Write to me through
+[cristianku.com](https://cristianku.com) with the e-mail address of your Apple ID and I'll add you as a
+tester: TestFlight then sends you the invitation.
+
+On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2pilot) too.
+
+## Getting started
+
+1. **Get your comma token.** Open [jwt.comma.ai](https://jwt.comma.ai), sign in with the account your comma
+   device is paired to, and copy the token.
+2. **Add it to the app.** **Devices → Add token**, paste it, **Verify and save**. Your devices show up in the
+   list.
+3. **Send a place.** In Google Maps or Apple Maps open a place, tap **Share** and choose **Nav2Pilot** (the
+   first time it may be under **More**), then **Send to …**. That's it.
+
+You can also type an address, paste a map link or coordinates in the **Send** tab, and keep your favourite
+places one tap away.
+
+## What you need on the car
+
+- openpilot or sunnypilot with **Nav Alpha**, the navigation comma added to openpilot in October 2026. Older
+  software doesn't have it, and the app tells you so.
+- The comma device must be **online** when you send.
+- The car keeps the destination until it goes off-road or the device restarts.
+
+## Optional: your own Mapbox account
+
+Nav Alpha asks comma's route service for the route. In my tests that service refused a device without comma
+prime, and the car stayed on "Waiting for route". With your own free Mapbox account:
+
+- the app shows the route on a map: pick one of the alternatives, long-press to add stops;
+- the car computes its route with your Mapbox account instead of comma's service.
+
+The car part needs the sunnypilot build from
+[cristianku/sunnypilot `feature/nav-alpha`](https://github.com/cristianku/sunnypilot/tree/feature/nav-alpha).
+On any other software the token simply stays on your phone and everything else works as usual.
+
+Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through it:
+
+1. Create a free Mapbox account. Without a payment card Mapbox only gives you a trial token with low limits;
+   with a card you get the free tier, which is plenty for personal use.
+2. Copy the **Default public token** (it starts with `pk.`).
+3. Paste it in the app. The next destination you send takes it to the car as well.
+
+<p align="center">
+  <img src="docs/screenshots/devices.png" width="270" alt="Devices tab: comma account, the car and the Mapbox setup">
+</p>
+
+## If something doesn't work
+
+- **"The comma token was rejected (HTTP 401)"**: the token has expired. Get a new one at
+  [jwt.comma.ai](https://jwt.comma.ai) and replace it in Devices.
+- **"Device unreachable"**: the comma device is offline. Try again when it's on and connected.
+- **The car shows "Waiting for route"**: see "Optional: your own Mapbox account" above.
+
+## Privacy
+
+- Your comma token and your Mapbox token stay in the iOS Keychain of your iPhone: never synced, never logged.
+- The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links) and, if
+  you set it up, to Mapbox. No analytics, no tracking.
+- Your position is used only for the route preview, and only Mapbox gets it.
+
+Nav2Pilot is an independent project, not affiliated with comma.ai or sunnypilot.
+
+---
+
+## Technical details
 
 Swift, SwiftUI, iOS 17+. Bundle ID `com.cristianku.nav2pilot`. iOS counterpart of
 [Nav2Pilot for Android](https://github.com/cristianku/nav2pilot): same API calls, same link rules, same
-tests. Independent of the openpilot / sunnypilot source code: it only talks to documented network APIs.
+tests. It only talks to documented network APIs, independently of the openpilot / sunnypilot source code.
 
-## Features
+### Features in detail
 
 - **Share extension**: "Nav2Pilot" in the share sheet of Google Maps, Apple Maps or any app that shares a
   link or text. The destination is resolved and sent from the share sheet itself, without leaving the
@@ -20,8 +94,10 @@ tests. Independent of the openpilot / sunnypilot source code: it only talks to d
   links, `geo:` URIs, `google.navigation:` URIs and Apple Maps links. Short links (`maps.app.goo.gl`,
   `maps.apple/p/…`) are expanded by following redirects.
 - Manual entry: `lat, lng`, a pasted link, or an address search (Apple MapKit).
-- **Route map (optional, Mapbox)**: the fastest route and up to two alternatives from the phone's position,
-  stops added with a long press. The device follows the route you pick (see "Waypoints").
+- **Mapbox (optional)**: your own Mapbox token is sent to the device, which then asks Mapbox for its routes
+  instead of comma's route service (see "Mapbox token on the device"). The Send tab shows the fastest route and
+  up to two alternatives from the phone's position, stops added with a long press. The device follows the
+  route you pick (see "Waypoints").
 - Several devices: all devices of the comma account, plus devices added by dongle ID.
 - Connection status (athena `getVersion`: shows the version and branch running on the device).
 - Send and clear the destination, with confirmation or a precise error.
@@ -29,35 +105,13 @@ tests. Independent of the openpilot / sunnypilot source code: it only talks to d
 - comma token stored in the iOS Keychain, on this iPhone only.
 - `geo:` links open in Nav2Pilot.
 
-## Requirements on the device
-
-- openpilot with Nav Alpha (commaai/openpilot master since "nav alpha" #39066, merged 2026-10-12) or a
-  sunnypilot build that includes Nav Alpha. Older software answers `method not found` and the app says so.
-- The device must be **online** (athena connected) when you send.
-- The destination is kept until the car goes **offroad** or the device **restarts** (see "Verified API").
-
-## Getting a comma token
-
-1. Open <https://jwt.comma.ai> (it redirects to `useradmin.comma.ai`) and sign in with the Google,
-   Apple or GitHub account your device is paired to.
-2. Copy the token.
-3. In Nav2Pilot open **Devices → Add token**, paste it, **Verify and save**.
+### comma token
 
 The token is checked with `GET /v1/me/` before it is stored. If the token carries an `exp` claim the app
 shows its expiry date; the token lifetime is not documented in the sources below, so when sending starts
 failing with HTTP 401, generate a new token.
 
-## Usage
-
-1. In Google Maps or Apple Maps open a place, tap **Share**, choose **Nav2Pilot** (the first time it may be
-   under **More**).
-2. Check the destination (an "approximate" warning means the link only had the map centre).
-3. Pick the device and tap **Send to …**, then **Done**.
-
-In the app, the **Send** tab does the same from a typed or pasted address, link or coordinates, and offers
-**Show in Apple Maps / Google Maps** to check the pin.
-
-## Verified API
+### Verified API
 
 Everything Nav2Pilot sends is taken from source code or official documentation:
 
@@ -87,7 +141,7 @@ Notes:
   status and whatever text the server returns.
 - `clearNavDestination` is in the device code but not in the comma-api schema.
 
-### Google Maps links
+#### Google Maps links
 
 - `maps.app.goo.gl` links are expanded one redirect at a time, reading only the `Location` header and
   only on Google hosts. The EU consent interstitial (`consent.google.com/...?continue=<maps url>`) is not
@@ -97,7 +151,7 @@ Notes:
   be kilometres away from the place. A viewport-only result is marked approximate.
 - When a link has no coordinates, the shared address lines (or the place name) are geocoded.
 
-### Apple Maps links
+#### Apple Maps links
 
 - Unified Maps URLs, documented in Apple's
   ["Adopting unified Maps URLs"](https://developer.apple.com/documentation/mapkit/unified-map-urls)
@@ -111,9 +165,9 @@ Notes:
   `maps.apple.com`. Their redirect target has not been checked with a real shared link yet; if it carries
   no coordinates, the shared text is geocoded as for Google.
 
-## Route map and waypoints
+### Route map and waypoints
 
-The map uses the user's **own free Mapbox account**: Devices → Route map → Set up Mapbox opens Mapbox's
+The map uses the user's **own free Mapbox account**: Devices → Mapbox → Set up Mapbox opens Mapbox's
 sign-up and Tokens pages, then the Default public token (`pk.…`) is pasted, checked with Mapbox's Tokens API
 (`GET https://api.mapbox.com/tokens/v2`, answer `TokenValid`) and stored in the Keychain. Secret tokens (`sk.…`)
 are refused. Mapbox has no API for a third-party app to create an account or a token, and comma's own Mapbox
@@ -128,11 +182,29 @@ checked 2026-10-17).
   the app sends three silent via points on it (at 25 %, 50 % and 75 % of its length), so the device's Mapbox
   request goes the same way. On comma's Nav Alpha, which has no `setNavRoute` (`-32601`), the app sends the
   destination alone and says so.
+- Without a payment card Mapbox gives only a trial token with lower limits; with a card the free tiers apply
+  ([Mapbox sign-up guide](https://docs.mapbox.com/accounts/guides/signup/)). The setup sheet says so.
 - Google Maps cannot be used for this: its terms forbid Google content with non-Google maps and in vehicle
   devices (Google Maps Platform Terms 3.2.3 (e) and (f)), and a shared Google route only says which
   alternative was picked (`!5i1`), not its roads.
 
-## sunnylink
+### Mapbox token on the device
+
+On a device without comma prime (`PrimeType` 0), comma's route service `api.commadotai.com/v1/nav` answered
+**HTTP 403** to every route request (route `0000011a`, 2026-10-17): navd got no route, the map stayed on
+"Waiting for route".
+With the sunnypilot method `setMapboxToken(token)` of `feature/nav-alpha` (`sunnypilot/navd/athena.py`) the
+device stores the user's public token in the `MapboxToken` param and navd asks `api.mapbox.com` directly.
+
+- The app sends the token when it is saved (to the selected device), and before a destination to a device
+  that does not have this token yet: only a SHA-256 fingerprint per device is kept, in UserDefaults.
+- Devices → Mapbox has "Send token to …" and "Remove token from …" (an empty token: back to comma's service).
+  Removing the token from the iPhone leaves the device's copy.
+- A device without `setMapboxToken` (`-32601`, unmodified openpilot) is not an error: the destination goes out
+  and the feedback is the usual one. Only "Send token to …" shows a short note.
+- The map tiles of the device (mapsd) still come from comma (`v1/<dongle_id>/nav/tiles`).
+
+### sunnylink
 
 Investigated, **not implemented** (the `SunnylinkTransport` backend is an explicit stub):
 
@@ -145,7 +217,7 @@ Investigated, **not implemented** (the `SunnylinkTransport` backend is an explic
 - Not available: a documented API contract, and a supported way for a third-party app to obtain a sunnylink
   token (the frontend signs users in through its own Logto OIDC client).
 
-## Architecture
+### Architecture
 
 ```
 Nav2PilotKit/                  Swift package: everything except the UI, tested with `swift test`
@@ -178,8 +250,10 @@ Group `group.com.cristianku.nav2pilot` and the token through the Keychain access
 `<team>.com.cristianku.nav2pilot.shared`. The app re-reads both when it comes to the foreground. If the
 extension finds no stored devices but has the token, it lists them from the comma account.
 
-## Security and privacy
+### Security and privacy
 
+- The Mapbox public token is in the Keychain too and is sent only to `api.mapbox.com` and, through athena,
+  to your own device.
 - The comma JWT is stored only in the iOS Keychain, with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`:
   readable only while the iPhone is unlocked, never synced to iCloud Keychain, never restored to another
   iPhone from a backup. Devices and favorites (not secret) are in the App Group's UserDefaults.
@@ -192,7 +266,7 @@ extension finds no stored devices but has the token, it lists them from the comm
   route preview and sent only to Mapbox.
 - The paste buttons use SwiftUI's `PasteButton`, so the clipboard is read only when you tap them.
 
-## Build
+### Build
 
 Toolchain: Xcode 16 or newer (the project was created with Xcode 26.3 and the iOS 26.2 SDK);
 deployment target iOS 17.0. One third-party dependency, the
@@ -212,7 +286,7 @@ xcodebuild -project Nav2Pilot.xcodeproj -scheme Nav2Pilot \
   -destination 'platform=iOS Simulator,name=iPhone 17' build
 ```
 
-### Build for an iPhone
+#### Build for an iPhone
 
 1. Create `Config/Local.xcconfig` (ignored by git) with your team ID:
 
@@ -228,7 +302,7 @@ The App Group and the bundle IDs are those of this repository. With another Appl
 `.entitlements` and `AppContainer.appGroupIdentifier` together. Without a working App Group the share
 extension still sends, using the device list of the comma account.
 
-### TestFlight (GitHub Actions)
+#### TestFlight (GitHub Actions)
 
 Fastlane on GitHub Actions signs with the certificates stored in the private
 `<owner>/Match-Secrets-Nav2Pilot` repository and uploads to TestFlight. The signing repository and
@@ -258,12 +332,12 @@ number. It also runs on the 1st of every month, because TestFlight builds expire
 If an identifier's App Group changes after its profile was created, the profile has to be regenerated
 (delete it in the developer portal, then run 3. Create Certificates again).
 
-### Regenerating the project
+#### Regenerating the project
 
 `Nav2Pilot.xcodeproj` is generated by [XcodeGen](https://github.com/yonaskolb/XcodeGen) from
 `project.yml` and committed. After editing `project.yml`: `brew install xcodegen && xcodegen generate`.
 
-## Tests
+### Tests
 
 - `swift test --package-path Nav2PilotKit`: link parsing (including a real `maps.app.goo.gl` redirect
   and EU consent hop captured on 2026-10-17, and Apple Maps links), short-link expansion, resolver
@@ -275,7 +349,7 @@ If an identifier's App Group changes after its profile was created, the profile 
   the package tests on iOS, the app-hosted Keychain and App Group tests, and the UI tests (typed
   coordinates → destination → favorite, `geo:` link, Devices and token screens).
 
-## CI
+### CI
 
 `.github/workflows/ios.yml` (every push and pull request) checks that the committed Xcode project matches `project.yml`, runs the
 package tests on macOS and all tests on an iPhone simulator, builds an unsigned Release for devices, and

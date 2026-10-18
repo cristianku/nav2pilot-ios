@@ -60,4 +60,7 @@ public protocol NavigationTransport: AnyObject {
     func setRoute(_ device: PairedDevice, _ destination: Destination, waypoints: [RouteWaypoint]) async -> Result<Delivery, TransportError>
 
     func clearDestination(_ device: PairedDevice) async -> Result<Delivery, TransportError>
+
+    /// The user's Mapbox public token, for the route requests of the device itself; an empty token removes it.
+    func setMapboxToken(_ device: PairedDevice, _ token: String) async -> Result<Delivery, TransportError>
 }

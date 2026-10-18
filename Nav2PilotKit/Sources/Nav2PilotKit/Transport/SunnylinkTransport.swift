@@ -39,4 +39,8 @@ public final class SunnylinkTransport: NavigationTransport {
     public func clearDestination(_ device: PairedDevice) async -> Result<Delivery, TransportError> {
         return .failure(.notImplemented(SunnylinkTransport.reason))
     }
+
+    public func setMapboxToken(_ device: PairedDevice, _ token: String) async -> Result<Delivery, TransportError> {
+        return .failure(.notImplemented(SunnylinkTransport.reason))
+    }
 }

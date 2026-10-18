@@ -40,7 +40,8 @@ public enum AppContainer {
                 directions: MapboxDirections(http: httpClient, tokenProvider: {
                     return mapboxTokenStore.load()
                 }),
-                location: CoreLocationProvider()
+                location: CoreLocationProvider(),
+                deliveries: MapboxDeliveries(store: dataStore)
             )
         }
 

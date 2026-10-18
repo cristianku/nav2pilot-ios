@@ -124,6 +124,28 @@ struct DevicesView: View {
         Section {
             if viewModel.hasMapboxToken {
                 Label("Mapbox token stored in the iOS Keychain", systemImage: "lock.fill")
+                if let device = selectedDevice() {
+                    Button("Send token to \(device.displayName())") {
+                        Task {
+                            await viewModel.sendMapboxTokenToDevice()
+                        }
+                    }
+                    .disabled(viewModel.mapboxDeviceBusy || !viewModel.hasToken)
+                    Button("Remove token from \(device.displayName())", role: .destructive) {
+                        Task {
+                            await viewModel.removeMapboxTokenFromDevice()
+                        }
+                    }
+                    .disabled(viewModel.mapboxDeviceBusy || !viewModel.hasToken)
+                }
+                if viewModel.mapboxDeviceBusy {
+                    ProgressView()
+                }
+                if !viewModel.mapboxDeviceMessage.isEmpty {
+                    Text(viewModel.mapboxDeviceMessage)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Button("Replace Mapbox token") {
                     viewModel.showMapboxSheet()
                 }
@@ -131,15 +153,29 @@ struct DevicesView: View {
                     viewModel.removeMapboxToken()
                 }
             } else {
-                Text("Optional: with your own free Mapbox account the Send tab shows the routes on a map, to pick one and add stops.")
+                Text("With your own free Mapbox account the device computes its routes with Mapbox instead of comma's route service, and the Send tab shows the routes on a map, to pick one and add stops.")
                     .font(.subheadline)
                 Button("Set up Mapbox") {
                     viewModel.showMapboxSheet()
                 }
             }
         } header: {
-            Text("Route map (Mapbox)")
+            Text("Mapbox")
+        } footer: {
+            if viewModel.hasMapboxToken {
+                Text("The device gets the token with the next destination you send, or now with the button. Removing it from this iPhone leaves the copy on the device.")
+            }
         }
+    }
+
+    /// From the observed list, so the section follows a change of device.
+    private func selectedDevice() -> PairedDevice? {
+        for device in viewModel.devices {
+            if device.dongleId == viewModel.selectedDongleId {
+                return device
+            }
+        }
+        return nil
     }
 
     private func backendsSection() -> some View {

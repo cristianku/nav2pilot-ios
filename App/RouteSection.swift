@@ -263,9 +263,10 @@ struct MapboxTokenSheet: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("1. Create a free Mapbox account.")
-                        Text("2. On the Tokens page copy the Default public token (it starts with pk.).")
-                        Text("3. Paste it here.")
+                        Text("1. Create a free Mapbox account and confirm the e-mail.")
+                        Text("2. Add a payment card in the account: without one Mapbox gives only a trial token with low limits. With a card the free tier applies, enough for personal use.")
+                        Text("3. On the Tokens page copy the Default public token (it starts with pk.). Never the secret one (sk.).")
+                        Text("4. Paste it here. If you rotate the token on Mapbox later, paste the new one again.")
                     }
                     .font(.subheadline)
                     if let signup = URL(string: MapboxEndpoints.signupUrl) {
@@ -293,7 +294,7 @@ struct MapboxTokenSheet: View {
                     }
                     .labelStyle(.titleAndIcon)
                 } footer: {
-                    Text("The token is checked with Mapbox, then stored in the Keychain of this iPhone only. The free tier covers personal use.")
+                    Text("The token is checked with Mapbox, then stored in the Keychain of this iPhone and sent to your comma device, which asks Mapbox for its routes with it.")
                 }
                 if !viewModel.mapboxMessage.isEmpty {
                     Section {

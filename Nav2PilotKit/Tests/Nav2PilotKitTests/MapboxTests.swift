@@ -194,7 +194,8 @@ final class RoutePlanningViewModelTests: XCTestCase {
             directions: MapboxDirections(http: http, tokenProvider: {
                 return mapboxTokens.load()
             }),
-            location: location
+            location: location,
+            deliveries: MapboxDeliveries(store: storage)
         )
         let devices = DeviceRepository(store: storage)
         devices.addManual(PairedDevice(dongleId: Fixtures.dongleId, alias: "Car"))
@@ -236,6 +237,7 @@ final class RoutePlanningViewModelTests: XCTestCase {
     func testPickedAlternativeIsSentAsViaPoints() async throws {
         try TokenStore(secrets: secrets).save(Fixtures.testJwt)
         try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save("pk.eyJ1IjoiYSJ9.abc")
+        MapboxDeliveries(store: storage).markDelivered(Fixtures.dongleId, token: "pk.eyJ1IjoiYSJ9.abc")
         let viewModel = createViewModel()
         await viewModel.start()  // no getVersion answer scripted: connection unreachable, sending still works
         await viewModel.search("45.0, 9.2")
@@ -285,5 +287,184 @@ final class RoutePlanningViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.routes.isEmpty)
         XCTAssertTrue(viewModel.routesMessage.contains("location"))
+    }
+}
+
+@MainActor
+final class MapboxDeviceTokenTests: XCTestCase {
+    private let token = "pk.eyJ1IjoiYSJ9.abc"
+    private let success = #"{"jsonrpc": "2.0", "id": 0, "result": {"success": 1}}"#
+    private var http = FakeHttpClient()
+    private var secrets = InMemorySecretStore()
+    private var storage = InMemoryKeyValueStore()
+
+    override func setUp() async throws {
+        http = FakeHttpClient()
+        secrets = InMemorySecretStore()
+        storage = InMemoryKeyValueStore()
+        try TokenStore(secrets: secrets).save(Fixtures.testJwt)
+    }
+
+    private func createViewModel() async -> MainViewModel {
+        let commaTokens = TokenStore(secrets: secrets)
+        let mapboxTokens = TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken)
+        let comma = CommaAthenaTransport(http: http, tokenProvider: {
+            return commaTokens.load()
+        })
+        let search = FakePlaceSearch()
+        let planning = RoutePlanning(
+            mapboxTokenStore: mapboxTokens,
+            verifier: MapboxTokenVerifier(http: http),
+            directions: MapboxDirections(http: http, tokenProvider: {
+                return mapboxTokens.load()
+            }),
+            location: FakeLocationProvider(LatLng(latitude: 45.0, longitude: 9.0)),
+            deliveries: MapboxDeliveries(store: storage)
+        )
+        let devices = DeviceRepository(store: storage)
+        devices.addManual(PairedDevice(dongleId: Fixtures.dongleId, alias: "Car"))
+        let viewModel = MainViewModel(
+            resolver: DestinationResolver(shortLinkResolver: ShortLinkResolver(http: http), placeSearch: search),
+            placeSearch: search,
+            transports: TransportRegistry(comma: comma, sunnylink: SunnylinkTransport()),
+            tokenStore: commaTokens,
+            favoritesRepository: FavoritesRepository(store: storage),
+            deviceRepository: devices,
+            routePlanning: planning
+        )
+        http.respond(200, #"{"jsonrpc": "2.0", "id": 0, "result": {"version": "1", "branch": "b", "remote": "", "commit": ""}}"#)
+        await viewModel.start()
+        return viewModel
+    }
+
+    private func methods() -> [String] {
+        var names: [String] = []
+        for request in http.requests {
+            names.append(jsonObject(request.body)["method"] as? String ?? request.url)
+        }
+        return names
+    }
+
+    func testFirstSendDeliversTheTokenBeforeTheDestinationThenNeverAgain() async throws {
+        try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save(token)
+        let viewModel = await createViewModel()
+        await viewModel.search("45.0, 9.2")
+
+        http.respond(200, success)
+        http.respond(200, success)
+        await viewModel.sendDestination()
+
+        XCTAssertEqual(["getVersion", "setMapboxToken", "setNavDestination"], methods())
+        let params = jsonObject(http.requests[1].body)["params"] as? [String: Any] ?? [:]
+        XCTAssertEqual(token, params["token"] as? String)
+        XCTAssertEqual("Destination sent to Car. Your Mapbox token was sent too.", viewModel.feedback?.message)
+
+        http.respond(200, success)
+        await viewModel.sendDestination()
+        XCTAssertEqual(["getVersion", "setMapboxToken", "setNavDestination", "setNavDestination"], methods())
+        XCTAssertEqual("Destination sent to Car.", viewModel.feedback?.message)
+    }
+
+    func testANewTokenIsDeliveredAgain() async throws {
+        try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save(token)
+        MapboxDeliveries(store: storage).markDelivered(Fixtures.dongleId, token: "pk.eyJ1IjoiYiJ9.old")
+        let viewModel = await createViewModel()
+        await viewModel.search("45.0, 9.2")
+
+        http.respond(200, success)
+        http.respond(200, success)
+        await viewModel.sendDestination()
+
+        XCTAssertEqual(["getVersion", "setMapboxToken", "setNavDestination"], methods())
+    }
+
+    private let methodNotFound = #"{"jsonrpc": "2.0", "id": 0, "error": {"code": -32601, "message": "Method not found"}}"#
+
+    func testUnmodifiedOpenpilotGetsTheDestinationWithoutAnyError() async throws {
+        try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save(token)
+        let viewModel = await createViewModel()
+        await viewModel.search("45.0, 9.2")
+
+        http.respond(200, methodNotFound)
+        http.respond(200, success)
+        await viewModel.sendDestination()
+
+        XCTAssertEqual(true, viewModel.feedback?.success)
+        XCTAssertEqual("Destination sent to Car.", viewModel.feedback?.message)
+        XCTAssertFalse(MapboxDeliveries(store: storage).isDelivered(Fixtures.dongleId, token: token))
+    }
+
+    func testSavingOnUnmodifiedOpenpilotSaysNothing() async {
+        let viewModel = await createViewModel()
+        http.respond(200, #"{"code": "TokenValid"}"#)
+        http.respond(200, methodNotFound)
+
+        await viewModel.saveMapboxToken(token)
+
+        XCTAssertTrue(viewModel.hasMapboxToken)
+        XCTAssertEqual("", viewModel.mapboxMessage)
+        XCTAssertEqual("", viewModel.mapboxDeviceMessage)
+    }
+
+    func testButtonsOnUnmodifiedOpenpilotGiveANoteNotAnError() async throws {
+        try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save(token)
+        let viewModel = await createViewModel()
+
+        http.respond(200, methodNotFound)
+        await viewModel.sendMapboxTokenToDevice()
+        XCTAssertEqual(MainViewModel.unsupportedNote(PairedDevice(dongleId: Fixtures.dongleId, alias: "Car")), viewModel.mapboxDeviceMessage)
+
+        http.respond(200, methodNotFound)
+        await viewModel.removeMapboxTokenFromDevice()
+        XCTAssertFalse(viewModel.mapboxDeviceMessage.contains("not removed"))
+    }
+
+    func testWithoutMapboxTokenNothingExtraIsSent() async {
+        let viewModel = await createViewModel()
+        await viewModel.search("45.0, 9.2")
+
+        http.respond(200, success)
+        await viewModel.sendDestination()
+
+        XCTAssertEqual(["getVersion", "setNavDestination"], methods())
+    }
+
+    func testSavingTheTokenSendsItToTheSelectedDevice() async {
+        let viewModel = await createViewModel()
+        http.respond(200, #"{"code": "TokenValid"}"#)
+        http.respond(200, success)
+
+        await viewModel.saveMapboxToken(token)
+
+        XCTAssertTrue(viewModel.hasMapboxToken)
+        XCTAssertEqual("setMapboxToken", methods().last)
+        XCTAssertTrue(viewModel.mapboxDeviceMessage.contains("sent to Car"))
+        XCTAssertTrue(MapboxDeliveries(store: storage).isDelivered(Fixtures.dongleId, token: token))
+    }
+
+    func testRemoveFromTheDeviceSendsAnEmptyToken() async throws {
+        try TokenStore(secrets: secrets, key: TokenStore.keyMapboxToken).save(token)
+        MapboxDeliveries(store: storage).markDelivered(Fixtures.dongleId, token: token)
+        let viewModel = await createViewModel()
+
+        http.respond(200, success)
+        await viewModel.removeMapboxTokenFromDevice()
+
+        let params = jsonObject(http.requests.last?.body)["params"] as? [String: Any] ?? [:]
+        XCTAssertEqual("", params["token"] as? String)
+        XCTAssertTrue(viewModel.mapboxDeviceMessage.contains("removed from Car"))
+        XCTAssertFalse(MapboxDeliveries(store: storage).isDelivered(Fixtures.dongleId, token: token))
+    }
+
+    func testDeliveriesKeepOnlyAFingerprint() {
+        let deliveries = MapboxDeliveries(store: storage)
+        deliveries.markDelivered(Fixtures.dongleId, token: token)
+
+        let stored = storage.getString(MapboxDeliveries.keyPrefix + Fixtures.dongleId) ?? ""
+        XCTAssertEqual(64, stored.count)
+        XCTAssertFalse(stored.contains("pk."))
+        XCTAssertTrue(deliveries.isDelivered(Fixtures.dongleId, token: token))
+        XCTAssertFalse(deliveries.isDelivered(Fixtures.dongleId, token: "pk.eyJ1IjoiYiJ9.other"))
+        XCTAssertFalse(deliveries.isDelivered("0000000000000000", token: token))
     }
 }

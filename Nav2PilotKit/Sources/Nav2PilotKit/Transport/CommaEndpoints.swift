@@ -22,6 +22,8 @@ public enum CommaEndpoints {
     public static let methodSetNavDestination = "setNavDestination"
     /// sunnypilot (cristianku/sunnypilot feature/nav-alpha, sunnypilot/navd/athena.py): destination plus waypoints.
     public static let methodSetNavRoute = "setNavRoute"
+    /// sunnypilot (same file): the user's Mapbox public token, so the device asks Mapbox for its routes directly.
+    public static let methodSetMapboxToken = "setMapboxToken"
     public static let methodClearNavDestination = "clearNavDestination"
     public static let methodGetVersion = "getVersion"
 }
