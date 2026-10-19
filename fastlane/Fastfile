@@ -107,7 +107,20 @@ platform :ios do
       initial_build_number: 0
     )
     build_number = previous_build_number + 1
-    UI.message("Build number #{build_number}")
+
+    # Version: last TestFlight version with the patch + 1 (1.0.0 -> 1.0.1).
+    # A higher MARKETING_VERSION in project.yml (e.g. 1.1.0) wins: that is how minor/major go up by hand.
+    project_version = File.read("#{GITHUB_WORKSPACE}/project.yml")[/MARKETING_VERSION: "([0-9.]+)"/, 1]
+    previous_version = Actions.lane_context[SharedValues::LATEST_TESTFLIGHT_VERSION]
+    if previous_version.nil?
+      version = project_version
+    elsif Gem::Version.new(project_version) > Gem::Version.new(previous_version)
+      version = project_version
+    else
+      parts = previous_version.split(".")
+      version = "#{parts[0]}.#{parts[1]}.#{parts[2].to_i + 1}"
+    end
+    UI.message("Version #{version} build #{build_number}")
 
     # Certificates and profiles are created by the certs lane; the build only reads them.
     match(
@@ -143,8 +156,8 @@ platform :ios do
       destination: "generic/platform=iOS",
       output_name: "Nav2Pilot.ipa",
       buildlog_path: "buildlog",
-      # App and extension read CFBundleVersion from CURRENT_PROJECT_VERSION, so both get the same number.
-      xcargs: "CURRENT_PROJECT_VERSION=#{build_number}"
+      # App and extension read their version and build number from these two settings, so both get the same values.
+      xcargs: "MARKETING_VERSION=#{version} CURRENT_PROJECT_VERSION=#{build_number}"
     )
 
     copy_artifacts(
