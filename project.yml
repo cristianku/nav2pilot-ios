@@ -26,10 +26,6 @@ settings:
 packages:
   Nav2PilotKit:
     path: Nav2PilotKit
-  # Route map (app only). Downloads need no credentials; each user pastes their own public token in the app.
-  MapboxMaps:
-    url: https://github.com/mapbox/mapbox-maps-ios.git
-    exactVersion: 11.33.0
 
 targets:
   Nav2Pilot:
@@ -40,7 +36,6 @@ targets:
       - Shared
     dependencies:
       - package: Nav2PilotKit
-      - package: MapboxMaps
       - target: Nav2PilotShare
     info:
       path: App/Info.plist
@@ -66,7 +61,7 @@ targets:
             CFBundleURLSchemes:
               - geo
         ITSAppUsesNonExemptEncryption: false
-        NSLocationWhenInUseUsageDescription: "Your position is the start of the route preview. It is only sent to Mapbox, with your own token, to compute the routes."
+        NSLocationWhenInUseUsageDescription: "The map opens on your position and the route preview starts from it. It is only sent to Mapbox, with your own token, to compute the routes."
     entitlements:
       path: App/Nav2Pilot.entitlements
       properties:

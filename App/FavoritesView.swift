@@ -3,12 +3,18 @@ import SwiftUI
 
 struct FavoritesView: View {
     let viewModel: MainViewModel
+    let onClose: () -> Void
 
     var body: some View {
         NavigationStack {
             content()
                 .background(Theme.background)
                 .navigationTitle("Favorites")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done", action: onClose)
+                    }
+                }
         }
     }
 

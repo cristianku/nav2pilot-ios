@@ -193,9 +193,13 @@ final class CommaAthenaTransportTests: XCTestCase {
 
         XCTAssertEqual(2, devices.count)
         XCTAssertEqual(
-            PairedDevice(dongleId: "1a2b3c4d5e6f7a8b", alias: "Peugeot 3008", deviceType: "three", lastAthenaPingSeconds: 1760700000, isOwner: true, backend: .commaAthena, addedManually: false),
+            PairedDevice(dongleId: "1a2b3c4d5e6f7a8b", alias: "Peugeot 3008", deviceType: "three", lastAthenaPingSeconds: 1760700000, isOwner: true, backend: .commaAthena, addedManually: false, prime: false),
             devices[0]
         )
+        XCTAssertTrue(devices[0].needsMapboxForRoutes())
+        // no "prime" field: unknown, which also counts as no prime
+        XCTAssertNil(devices[1].prime)
+        XCTAssertTrue(devices[1].needsMapboxForRoutes())
         XCTAssertEqual("", devices[1].alias)
         XCTAssertEqual(0, devices[1].lastAthenaPingSeconds)
         XCTAssertFalse(devices[1].isOwner)

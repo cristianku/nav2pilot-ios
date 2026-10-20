@@ -28,47 +28,54 @@ struct Nav2PilotApp: App {
     }
 }
 
-enum Tab: Hashable {
-    case send
-    case favorites
-    case devices
-}
-
+/// The map is the app; favorites and settings open as sheets over it.
 struct RootView: View {
     @Bindable var viewModel: MainViewModel
-    @State private var tab = Tab.send
+    @State private var settingsOpen = false
+    @State private var favoritesOpen = false
 
     var body: some View {
-        TabView(selection: $tab) {
-            SendView(viewModel: viewModel, openDevices: {
-                tab = .devices
-            })
-            .tabItem {
-                Label("Send", systemImage: "paperplane")
+        MapScreenView(
+            viewModel: viewModel,
+            openSettings: {
+                settingsOpen = true
+            },
+            openFavorites: {
+                favoritesOpen = true
             }
-            .tag(Tab.send)
-
-            FavoritesView(viewModel: viewModel)
-                .tabItem {
-                    Label("Favorites", systemImage: "heart")
-                }
-                .tag(Tab.favorites)
-
-            DevicesView(viewModel: viewModel)
-                .tabItem {
-                    Label("Devices", systemImage: "car")
-                }
-                .tag(Tab.devices)
-        }
-        // a solid tab bar in the app colours instead of the grey system material
-        .toolbarBackground(Theme.card, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
+        )
+        // a shared place or a picked favorite: back to the map
         .onChange(of: viewModel.showSendTabRequest) {
-            tab = .send
+            settingsOpen = false
+            favoritesOpen = false
         }
-        // one sheet for both tabs that offer the Mapbox setup
-        .sheet(isPresented: $viewModel.mapboxSheetVisible) {
+        .sheet(isPresented: $settingsOpen) {
+            DevicesView(viewModel: viewModel, onClose: {
+                settingsOpen = false
+            })
+        }
+        .sheet(isPresented: $favoritesOpen) {
+            FavoritesView(viewModel: viewModel, onClose: {
+                favoritesOpen = false
+            })
+            .presentationDetents([.medium, .large])
+        }
+        // from the map panel; with the settings open, the settings present it themselves
+        .sheet(isPresented: mapboxSheetOverMap()) {
             MapboxTokenSheet(viewModel: viewModel)
         }
+    }
+
+    private func mapboxSheetOverMap() -> Binding<Bool> {
+        return Binding(
+            get: {
+                return viewModel.mapboxSheetVisible && !settingsOpen
+            },
+            set: { visible in
+                if !visible {
+                    viewModel.hideMapboxSheet()
+                }
+            }
+        )
     }
 }

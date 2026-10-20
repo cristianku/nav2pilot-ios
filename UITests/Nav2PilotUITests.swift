@@ -14,9 +14,13 @@ final class Nav2PilotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        let field = app.textFields["Search a place or paste a link"]
-        XCTAssertTrue(field.waitForExistence(timeout: 15))
-        field.tap()
+        // the search pill opens the search field
+        let pill = app.buttons["Search a place"]
+        XCTAssertTrue(pill.waitForExistence(timeout: 15))
+        attachScreenshot(app, "Map")
+        pill.tap()
+        let field = app.textFields["Search or paste a link"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.typeText("45.4642, 9.19\n")
 
         XCTAssertTrue(app.staticTexts[coordinates].waitForExistence(timeout: 5))
@@ -25,8 +29,7 @@ final class Nav2PilotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["From: Coordinates"].waitForExistence(timeout: 5))
         attachScreenshot(app, "Send")
 
-        // without a Mapbox token the route section offers the setup: own account, then the public token
-        // (a simulator where a token was pasted by hand shows the route map instead)
+        // a car without comma prime and no Mapbox token: the panel offers the setup (own account, public token)
         let setUpMapbox = app.buttons["Set up Mapbox"].firstMatch
         if setUpMapbox.waitForExistence(timeout: 5) {
             setUpMapbox.tap()
@@ -44,17 +47,23 @@ final class Nav2PilotUITests: XCTestCase {
         app.buttons["Add to favorites"].tap()
         XCTAssertTrue(app.buttons["Remove from favorites"].waitForExistence(timeout: 5))
 
-        app.tabBars.buttons["Favorites"].tap()
-        let favorite = app.staticTexts[coordinates].firstMatch
+        app.buttons["Favorites"].tap()
+        // the cell in the favorites sheet, not the same text in the panel under it
+        let favorite = app.cells.containing(.staticText, identifier: coordinates).firstMatch
         XCTAssertTrue(favorite.waitForExistence(timeout: 5))
         attachScreenshot(app, "Favorites")
 
-        // leave no favorite behind for the next run
-        favorite.swipeLeft()
+        // leave no favorite behind for the next run (other favorites of this simulator stay);
+        // the sheet opens at half height, full height first so the row is not under the screen edge
+        app.buttons["Sheet Grabber"].swipeUp()
+        favorite.staticTexts.firstMatch.swipeLeft()
         app.buttons["Remove"].tap()
-        XCTAssertTrue(app.staticTexts["Your places, one tap away"].waitForExistence(timeout: 5))
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: favorite)
+        waitForExpectations(timeout: 5)
+        app.buttons["Done"].tap()
 
-        app.tabBars.buttons["Devices"].tap()
+        app.buttons["Settings"].tap()
         // "Add token" on a fresh install, "Manage" > "Replace token" once a comma token is stored
         let addToken = app.buttons["Add token"]
         if addToken.waitForExistence(timeout: 5) {
@@ -94,12 +103,13 @@ final class Nav2PilotUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        app.tabBars.buttons["Devices"].tap()
+        app.buttons["Settings"].tap()
         let carActions = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Actions for ")).firstMatch
         if !carActions.waitForExistence(timeout: 3) {
             throw XCTSkip("no car stored in this simulator")
         }
         attachScreenshot(app, "Tour-Devices")
+        app.buttons["Done"].tap()
 
         guard let url = URL(string: "geo:0,0?q=45.464211,9.191383(Duomo di Milano)") else {
             return XCTFail("bad URL")
@@ -115,7 +125,7 @@ final class Nav2PilotUITests: XCTestCase {
         if !alreadyFavorite.exists {
             app.buttons["Add to favorites"].tap()
         }
-        app.tabBars.buttons["Favorites"].tap()
+        app.buttons["Favorites"].tap()
         let favorite = app.staticTexts["Duomo di Milano"].firstMatch
         XCTAssertTrue(favorite.waitForExistence(timeout: 5))
         attachScreenshot(app, "Tour-Favorites")

@@ -79,7 +79,7 @@ public enum JsonCodec {
     public static func devicesToJson(_ devices: [PairedDevice]) -> String {
         var array: [[String: Any]] = []
         for device in devices {
-            array.append([
+            var item: [String: Any] = [
                 "dongle_id": device.dongleId,
                 "alias": device.alias,
                 "device_type": device.deviceType,
@@ -87,7 +87,11 @@ public enum JsonCodec {
                 "is_owner": device.isOwner,
                 "backend": device.backend.rawValue,
                 "added_manually": device.addedManually,
-            ])
+            ]
+            if let prime = device.prime {
+                item["prime"] = prime
+            }
+            array.append(item)
         }
         return Json.serialize(array)
     }
@@ -113,7 +117,8 @@ public enum JsonCodec {
                     lastAthenaPingSeconds: Json.int64(item, "last_athena_ping", defaultValue: 0),
                     isOwner: Json.bool(item, "is_owner", defaultValue: true),
                     backend: BackendKind.fromId(Json.string(item, "backend")),
-                    addedManually: Json.bool(item, "added_manually", defaultValue: false)
+                    addedManually: Json.bool(item, "added_manually", defaultValue: false),
+                    prime: Json.optionalBool(item, "prime")
                 )
             )
         }

@@ -1,8 +1,10 @@
 import Nav2PilotKit
 import SwiftUI
 
+/// The settings: comma account, car, Mapbox. Opens over the map.
 struct DevicesView: View {
     @Bindable var viewModel: MainViewModel
+    let onClose: () -> Void
     @State private var connectionDetailsExpanded = false
     @State private var deviceToRemove: PairedDevice?
 
@@ -23,9 +25,17 @@ struct DevicesView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.background)
-            .navigationTitle("Devices")
+            .navigationTitle("Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done", action: onClose)
+                }
+            }
             .sheet(isPresented: $viewModel.tokenSheetVisible) {
                 TokenSheet(viewModel: viewModel)
+            }
+            .sheet(isPresented: $viewModel.mapboxSheetVisible) {
+                MapboxTokenSheet(viewModel: viewModel)
             }
             .confirmationDialog(removeTitle(), isPresented: removeDialogBinding(), titleVisibility: .visible) {
                 Button("Remove", role: .destructive) {

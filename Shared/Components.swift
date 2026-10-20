@@ -48,18 +48,18 @@ extension Color {
     }
 }
 
-/// Colours shared with the Android app. The send blue is the AccentColor asset.
+/// Colours shared with the Android app: the logo's night blue and cyan. The cyan is also the AccentColor asset.
 enum Theme {
-    static let background = Color(light: 0xF5F7FB, dark: 0x0B1220)
-    static let card = Color(light: 0xFFFFFF, dark: 0x141F31)
-    static let cardBorder = Color(light: 0xDCE2EB, dark: 0x26344A)
-    static let mutedFill = Color(light: 0xEDF1F7, dark: 0x1C293E)
+    static let background = Color(light: 0xF3F6FA, dark: 0x010E30)
+    static let card = Color(light: 0xFFFFFF, dark: 0x0A1A44)
+    static let cardBorder = Color(light: 0xDCE2EB, dark: 0x22336A)
+    static let mutedFill = Color(light: 0xEAF0F6, dark: 0x13275C)
     /// cyan of the road markings in the logo: dark enough for text on white, bright on the dark surfaces
     static let brand = Color(light: 0x007C96, dark: 0x00D5E8)
-    static let brandSoft = Color(light: 0xD7F1F6, dark: 0x0E3A46)
-    static let accentSoft = Color(light: 0xE3E7FD, dark: 0x26336E)
-    /// text on the send blue: white on #465BEA, dark navy on the lighter #8C9BF7 of the dark theme
-    static let onAccent = Color(light: 0xFFFFFF, dark: 0x10182A)
+    static let brandSoft = Color(light: 0xD2F3F8, dark: 0x00475A)
+    static let accentSoft = Color(light: 0xD2F3F8, dark: 0x00475A)
+    /// text on the cyan accent: white on the dark cyan of the light theme, night blue on the bright cyan
+    static let onAccent = Color(light: 0xFFFFFF, dark: 0x010E30)
     /// background of secondary system buttons that only take a tint (PasteButton)
     static let neutralAction = Color(light: 0x556477, dark: 0x3A4A62)
     // status colours stay apart from the brand and always come with an icon and a text

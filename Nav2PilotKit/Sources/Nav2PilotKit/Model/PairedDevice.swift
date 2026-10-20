@@ -22,6 +22,9 @@ public struct PairedDevice: Equatable, Identifiable {
     public var isOwner: Bool
     public var backend: BackendKind
     public var addedManually: Bool
+    /// comma prime, from `prime` in /v1/me/devices/; nil when unknown (added by hand). Without prime comma's
+    /// route service refuses the car, which then needs the user's Mapbox token to get a route.
+    public var prime: Bool?
 
     public init(
         dongleId: String,
@@ -30,7 +33,8 @@ public struct PairedDevice: Equatable, Identifiable {
         lastAthenaPingSeconds: Int64 = 0,
         isOwner: Bool = true,
         backend: BackendKind = .commaAthena,
-        addedManually: Bool = false
+        addedManually: Bool = false,
+        prime: Bool? = nil
     ) {
         self.dongleId = dongleId
         self.alias = alias
@@ -39,6 +43,15 @@ public struct PairedDevice: Equatable, Identifiable {
         self.isOwner = isOwner
         self.backend = backend
         self.addedManually = addedManually
+        self.prime = prime
+    }
+
+    /// True when the car can only get routes through the user's Mapbox token. Unknown counts as no prime.
+    public func needsMapboxForRoutes() -> Bool {
+        if prime == true {
+            return false
+        }
+        return true
     }
 
     public var id: String {

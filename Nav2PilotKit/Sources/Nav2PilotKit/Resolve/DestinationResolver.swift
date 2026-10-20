@@ -12,6 +12,7 @@ public final class DestinationResolver {
     public static let sourceLink = "Map link"
     public static let sourceCoordinates = "Coordinates"
     public static let sourceSearch = "Search"
+    public static let sourceMap = "Map"
     public static let sourceFavorite = "Favorite"
 
     private static let maxResults = 5

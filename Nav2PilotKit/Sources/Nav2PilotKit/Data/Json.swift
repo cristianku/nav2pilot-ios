@@ -60,6 +60,14 @@ enum Json {
         return nil
     }
 
+    /// nil for a missing or null value.
+    static func optionalBool(_ object: [String: Any], _ key: String) -> Bool? {
+        if let number = object[key] as? NSNumber {
+            return number.boolValue
+        }
+        return nil
+    }
+
     static func bool(_ object: [String: Any], _ key: String, defaultValue: Bool) -> Bool {
         if let number = object[key] as? NSNumber {
             return number.boolValue

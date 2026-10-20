@@ -286,7 +286,8 @@ public final class CommaAthenaTransport: NavigationTransport {
                     lastAthenaPingSeconds: Json.int64(item, "last_athena_ping", defaultValue: 0),
                     isOwner: Json.bool(item, "is_owner", defaultValue: true),
                     backend: .commaAthena,
-                    addedManually: false
+                    addedManually: false,
+                    prime: Json.optionalBool(item, "prime")
                 )
             )
         }

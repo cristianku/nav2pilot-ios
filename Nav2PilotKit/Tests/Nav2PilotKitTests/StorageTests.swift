@@ -90,6 +90,8 @@ final class RepositoriesTests: XCTestCase {
     func testDeviceJsonRoundTrip() {
         let devices = [
             PairedDevice(dongleId: "1a2b3c4d5e6f7a8b", alias: "Car", deviceType: "three", lastAthenaPingSeconds: 42, isOwner: false, backend: .sunnylink, addedManually: true),
+            PairedDevice(dongleId: "1111111111111111", alias: "Prime car", prime: true),
+            PairedDevice(dongleId: "2222222222222222", alias: "No prime", prime: false),
         ]
         XCTAssertEqual(devices, JsonCodec.devicesFromJson(JsonCodec.devicesToJson(devices)))
     }

@@ -78,6 +78,8 @@ public final class MainViewModel {
 
     /// Incremented when the Send tab should be brought to front (share received, favorite picked).
     public private(set) var showSendTabRequest = 0
+    /// Incremented when the map should move to the phone's position (the recentre button).
+    public private(set) var recenterRequest = 0
 
     private let resolver: DestinationResolver
     private let placeSearch: PlaceSearch
@@ -188,6 +190,42 @@ public final class MainViewModel {
         }
         selectFavorite(favorite)
         await sendDestination()
+    }
+
+    /// Long press on the map with no destination yet: that point becomes the destination.
+    public func pickOnMap(latitude: Double, longitude: Double) {
+        if !CoordinateRules.isValid(latitude: latitude, longitude: longitude) {
+            return
+        }
+        resolveGeneration += 1
+        destination = Destination(latitude: latitude, longitude: longitude, name: "Dropped pin")
+        destinationSource = DestinationResolver.sourceMap
+        choices = []
+        resolving = false
+        resolveError = ""
+        feedback = nil
+        destinationChanged()
+    }
+
+    /// Closes the search results without choosing one.
+    public func dismissChoices() {
+        choices = []
+        resolveError = ""
+    }
+
+    /// The phone's position for the map ("you are here"); [recenter] also moves the map there.
+    /// The first call asks for the location permission.
+    public func refreshMyLocation(recenter: Bool) async {
+        guard let planning = routePlanning else {
+            return
+        }
+        guard let position = await planning.location.currentLocation() else {
+            return
+        }
+        origin = position
+        if recenter {
+            recenterRequest += 1
+        }
     }
 
     public func clearSelection() {
