@@ -18,7 +18,10 @@ struct MapScreenView: View {
 
     // narrower than this, or taller than wide, stays the phone layout
     private static let wideMinWidth: CGFloat = 600
-    private static let widePanelWidth: CGFloat = 380
+    // the landscape panel: this share of the width, between a minimum and a maximum, the rest is map
+    private static let widePanelFraction: CGFloat = 0.32
+    private static let widePanelMinWidth: CGFloat = 280
+    private static let widePanelMaxWidth: CGFloat = 360
     private static let buttonSize: CGFloat = 52
     private static let searchMaxWidth: CGFloat = 520
 
@@ -35,11 +38,13 @@ struct MapScreenView: View {
         let token = mapboxToken()
         GeometryReader { geometry in
             let wide = geometry.size.width >= MapScreenView.wideMinWidth && geometry.size.width > geometry.size.height
+            // the geometry stops at the safe area, so this is the width left by the side system bars
+            let panelWidth = MapScreenView.widePanelWidth(availableWidth: geometry.size.width)
             ZStack(alignment: .topLeading) {
                 NavMapView(
                     content: content,
                     mapboxToken: token,
-                    insets: mapInsets(wide: wide, safeArea: geometry.safeAreaInsets),
+                    insets: mapInsets(wide: wide, panelWidth: panelWidth, safeArea: geometry.safeAreaInsets),
                     onTap: {
                         mapTapped()
                     },
@@ -53,12 +58,15 @@ struct MapScreenView: View {
                 .ignoresSafeArea()
 
                 if viewModel.destination != nil {
-                    panel(wide: wide)
+                    panel(wide: wide, panelWidth: panelWidth, leadingSafeArea: geometry.safeAreaInsets.leading)
                 }
 
-                topControls(wide: wide)
+                topControls(wide: wide, panelWidth: panelWidth)
 
-                bottomButtons(wide: wide)
+                // with a destination the panel has all it needs: no buttons on the map to distract
+                if viewModel.destination == nil {
+                    bottomButtons()
+                }
             }
         }
         .task {
@@ -78,23 +86,35 @@ struct MapScreenView: View {
 
     // MARK: - layout
 
-    private func mapInsets(wide: Bool, safeArea: EdgeInsets) -> MapInsets {
+    private static func widePanelWidth(availableWidth: CGFloat) -> CGFloat {
+        var width = availableWidth * MapScreenView.widePanelFraction
+        if width < MapScreenView.widePanelMinWidth {
+            width = MapScreenView.widePanelMinWidth
+        } else if width > MapScreenView.widePanelMaxWidth {
+            width = MapScreenView.widePanelMaxWidth
+        }
+        return width
+    }
+
+    private func mapInsets(wide: Bool, panelWidth: CGFloat, safeArea: EdgeInsets) -> MapInsets {
         var insets = MapInsets()
         // the top controls: one row, two with the car under the search
         insets.top = safeArea.top + 76
         if searchVisible() && !searchEditing {
             insets.top += MapScreenView.buttonSize + 10
         }
-        // above the favorites and recentre buttons, where Apple's legal label must stay visible
-        let buttonsHeight = MapScreenView.buttonSize + 24
+        // Apple's legal label must stay visible: with a destination above the panel on the phone, right of it in
+        // landscape (no buttons then); without one above the favorites and recentre buttons
         if viewModel.destination != nil {
             if wide {
-                insets.leading = MapScreenView.widePanelWidth
-                insets.bottom = safeArea.bottom + buttonsHeight
+                // the panel also covers the leading safe area
+                insets.leading = safeArea.leading + panelWidth
+                insets.bottom = safeArea.bottom
             } else {
-                insets.bottom = panelSize.height + buttonsHeight
+                insets.bottom = panelSize.height
             }
         } else {
+            let buttonsHeight = MapScreenView.buttonSize + 24
             insets.bottom = safeArea.bottom + buttonsHeight
         }
         return insets
@@ -137,7 +157,7 @@ struct MapScreenView: View {
 
     // MARK: - top: search and settings, the car under the search (in its place when the search is hidden)
 
-    private func topControls(wide: Bool) -> some View {
+    private func topControls(wide: Bool, panelWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 Group {
@@ -157,7 +177,7 @@ struct MapScreenView: View {
                 carButton()
             }
         }
-        .padding(.leading, (wide && viewModel.destination != nil ? MapScreenView.widePanelWidth : 0) + 12)
+        .padding(.leading, (wide && viewModel.destination != nil ? panelWidth : 0) + 12)
         .padding(.trailing, 12)
         .padding(.top, 8)
     }
@@ -410,9 +430,9 @@ struct MapScreenView: View {
         }
     }
 
-    // MARK: - favorites bottom left, recentre bottom right, just above the panel
+    // MARK: - favorites bottom left, recentre bottom right, only without a destination
 
-    private func bottomButtons(wide: Bool) -> some View {
+    private func bottomButtons() -> some View {
         VStack {
             Spacer()
             HStack {
@@ -424,24 +444,25 @@ struct MapScreenView: View {
                     }
                 }
             }
-            .padding(.leading, (wide && viewModel.destination != nil ? MapScreenView.widePanelWidth : 0) + 12)
+            .padding(.leading, 12)
             .padding(.trailing, 12)
-            // the measured panel stops at the bottom safe area, like this container
-            .padding(.bottom, viewModel.destination != nil && !wide ? panelSize.height + 12 : 16)
+            .padding(.bottom, 16)
         }
     }
 
     // MARK: - destination panel
 
     @ViewBuilder
-    private func panel(wide: Bool) -> some View {
+    private func panel(wide: Bool, panelWidth: CGFloat, leadingSafeArea: CGFloat) -> some View {
         if wide {
             HStack(spacing: 0) {
                 ScrollView {
                     DestinationPanel(viewModel: viewModel, openSettings: openSettings)
                         .padding(16)
+                        // the card goes to the screen edge, its content stays clear of the Dynamic Island
+                        .padding(.leading, leadingSafeArea)
                 }
-                .frame(width: MapScreenView.widePanelWidth)
+                .frame(width: leadingSafeArea + panelWidth)
                 .background(Theme.card)
                 .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: 24, topTrailingRadius: 24, style: .continuous))
                 .shadow(color: .black.opacity(0.2), radius: 10)

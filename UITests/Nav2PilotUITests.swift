@@ -47,8 +47,9 @@ final class Nav2PilotUITests: XCTestCase {
         app.buttons["Add to favorites"].tap()
         XCTAssertTrue(app.buttons["Remove from favorites"].waitForExistence(timeout: 5))
 
+        // the favorites button is on the map only without a destination
+        app.buttons["Clear destination"].tap()
         app.buttons["Favorites"].tap()
-        // the cell in the favorites sheet, not the same text in the panel under it
         let favorite = app.cells.containing(.staticText, identifier: coordinates).firstMatch
         XCTAssertTrue(favorite.waitForExistence(timeout: 5))
         attachScreenshot(app, "Favorites")
@@ -125,6 +126,7 @@ final class Nav2PilotUITests: XCTestCase {
         if !alreadyFavorite.exists {
             app.buttons["Add to favorites"].tap()
         }
+        app.buttons["Clear destination"].tap()
         app.buttons["Favorites"].tap()
         let favorite = app.staticTexts["Duomo di Milano"].firstMatch
         XCTAssertTrue(favorite.waitForExistence(timeout: 5))
