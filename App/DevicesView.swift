@@ -306,11 +306,12 @@ struct DevicesView: View {
                     viewModel.showMapboxSheet()
                 }
             }
+            Link("Comma setup: manual instructions or compatible builds", destination: URL(string: "https://github.com/cristianku/nav2pilot-ios#configure-mapbox-on-the-comma")!)
         } header: {
             Text("Maps and routes")
         } footer: {
             if viewModel.hasMapboxToken {
-                Text("Stored in the iOS Keychain. Your car gets the token automatically with every destination you send. Removing it here also removes it from the selected car.")
+                Text("Stored in the iOS Keychain. Compatible builds receive the token automatically with every destination. Official builds need manual setup. Removing the token here does not remove a manually configured token.")
             }
         }
         .listRowBackground(Theme.card)

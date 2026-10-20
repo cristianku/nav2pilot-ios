@@ -59,7 +59,28 @@ struct MapboxTokenSheet: View {
                     }
                     .labelStyle(.titleAndIcon)
                 } footer: {
-                    Text("The token is checked with Mapbox, then stored in the Keychain of this iPhone and sent to your comma device, which asks Mapbox for its routes with it.")
+                    Text("The token is checked with Mapbox and stored in the Keychain of this iPhone. Automatic transfer to the comma needs a compatible build; official builds need manual configuration.")
+                }
+                Section("Configure Mapbox on the comma") {
+                    DisclosureGroup("Keep official openpilot / sunnypilot") {
+                        Text("Requires Nav Alpha. Configure the token yourself once:")
+                        Text("1. Enable SSH on the comma and add your GitHub SSH key. From a computer on the same network, connect with ssh comma@COMMA_IP.")
+                        Text("2. Back up /data/continue.sh, then edit it. Add this line before the command that starts openpilot, replacing the placeholder with your public token. Keep the existing startup commands.")
+                        Text("export MAPBOX_TOKEN='pk.REPLACE_WITH_YOUR_PUBLIC_TOKEN'")
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                        Text("3. Save, check with bash -n /data/continue.sh, then reboot the comma while parked. An export in the SSH session alone is not persistent.")
+                        Text("Update or remove this line yourself when changing or removing the token. Manual setup enables Mapbox routing; selected alternatives and stops still need a compatible build.")
+                        Link("Open the complete manual setup guide", destination: URL(string: "https://github.com/cristianku/nav2pilot-ios#configure-mapbox-on-the-comma")!)
+                    }
+                    DisclosureGroup("Install a compatible build") {
+                        Text("For automatic token transfer and waypoint support, install one of these builds on the comma.")
+                        Link("cristianku/openpilot:nav-alpha", destination: URL(string: "https://github.com/cristianku/openpilot/tree/nav-alpha")!)
+                        Text("Installer URL: installer.comma.ai/cristianku/nav-alpha")
+                            .font(.caption)
+                            .textSelection(.enabled)
+                        Link("cristianku/openpilot:sunny-nav-alpha (not yet published)", destination: URL(string: "https://github.com/cristianku/openpilot/tree/sunny-nav-alpha")!)
+                    }
                 }
                 if !viewModel.mapboxMessage.isEmpty {
                     Section {
