@@ -48,8 +48,7 @@ prime, and the car stayed on "Waiting for route". With your own free Mapbox acco
 
 You can keep official openpilot / sunnypilot and configure `MAPBOX_TOKEN` manually, or install a compatible
 build for automatic token transfer. Follow [Configure Mapbox on the comma](#configure-mapbox-on-the-comma)
-below. The guide links `cristianku/openpilot:nav-alpha` and `cristianku/openpilot:sunny-nav-alpha`;
-the latter is not yet published.
+below. The guide links `cristianku/openpilot:nav-alpha` and `cristianku/openpilot:sunny-nav-alpha`.
 
 Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through it:
 
@@ -120,7 +119,7 @@ For automatic token transfer and waypoint support, use the following packaged br
 | Software | Repository and branch | Custom-software installer URL | Availability |
 |----------|-----------------------|-------------------------------|--------------|
 | openpilot | [`cristianku/openpilot:nav-alpha`](https://github.com/cristianku/openpilot/tree/nav-alpha) | `installer.comma.ai/cristianku/nav-alpha` | Published |
-| sunnypilot | [`cristianku/openpilot:sunny-nav-alpha`](https://github.com/cristianku/openpilot/tree/sunny-nav-alpha) | `installer.comma.ai/cristianku/sunny-nav-alpha` | Not yet published; do not install until available |
+| sunnypilot | [`cristianku/openpilot:sunny-nav-alpha`](https://github.com/cristianku/openpilot/tree/sunny-nav-alpha) | `installer.comma.ai/cristianku/sunny-nav-alpha` | Published |
 
 Enter the installer URL on the comma's custom-software installation screen. Then save your public token
 in **Devices → Mapbox** in Nav2Pilot: the app sends it to the selected comma when saved and before sending

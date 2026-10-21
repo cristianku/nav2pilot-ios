@@ -79,7 +79,7 @@ struct MapboxTokenSheet: View {
                         Text("Installer URL: installer.comma.ai/cristianku/nav-alpha")
                             .font(.caption)
                             .textSelection(.enabled)
-                        Link("cristianku/openpilot:sunny-nav-alpha (not yet published)", destination: URL(string: "https://github.com/cristianku/openpilot/tree/sunny-nav-alpha")!)
+                        Link("cristianku/openpilot:sunny-nav-alpha", destination: URL(string: "https://github.com/cristianku/openpilot/tree/sunny-nav-alpha")!)
                     }
                 }
                 if !viewModel.mapboxMessage.isEmpty {
