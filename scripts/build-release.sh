@@ -1,25 +1,51 @@
 #!/usr/bin/env bash
-# Checks Nav2Pilot for iOS locally, then has GitHub Actions build it and upload it to TestFlight.
+# Builds Nav2Pilot for iOS on this Mac and uploads it to TestFlight. Nothing runs on GitHub.
 #
-#   scripts/build-release.sh           tests + simulator build here, then the TestFlight build on GitHub
+#   scripts/build-release.sh           tests + simulator build, then archive and upload to TestFlight
+#   scripts/build-release.sh 1.1.0     same, with version 1.1.0 instead of the last version with patch + 1
 #   scripts/build-release.sh --local   only the tests and the simulator build, nothing goes to TestFlight
 #
-# The TestFlight build is workflow "4. Build Nav2Pilot": it builds what is on GitHub (branch main), signs it
-# with the Match certificates and uses the next TestFlight build number. So unpushed commits are not in it,
-# and the script stops if there are any.
+# Version and build number come from the Nav2Pilot archives in Xcode's Archives folder: build = highest + 1.
+# Signing is automatic with the Xcode account (team TG24AHP9SF).
 # pipefail: a failed test run or build stops the script, even though its output goes through grep
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO"
 
-GITHUB_REPO="cristianku/nav2pilot-ios"
-WORKFLOW="build_nav2pilot.yml"
+TEAM_ID="TG24AHP9SF"
 BRANCH="main"
+ARCHIVES_DIR="$HOME/Library/Developer/Xcode/Archives"
 
 LOCAL_ONLY="no"
+VERSION_ARG=""
 if [ "${1:-}" = "--local" ]; then
   LOCAL_ONLY="yes"
+elif [ -n "${1:-}" ]; then
+  VERSION_ARG="$1"
+fi
+
+if [ "$LOCAL_ONLY" = "no" ]; then
+  echo "== what will be built"
+  CURRENT_BRANCH="$(git branch --show-current)"
+  if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+    echo "You are on '$CURRENT_BRANCH', but TestFlight is built from '$BRANCH'."
+    exit 1
+  fi
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "Uncommitted changes: commit them first, TestFlight builds only committed code."
+    git status --short
+    exit 1
+  fi
+  echo "$BRANCH at $(git log -1 --format='%h %s')"
+fi
+
+echo "== xcodegen"
+xcodegen generate --quiet
+if [ "$LOCAL_ONLY" = "no" ] && [ -n "$(git status --porcelain)" ]; then
+  echo "xcodegen changed the project: commit it first."
+  git status --short
+  exit 1
 fi
 
 echo "== package tests"
@@ -36,32 +62,54 @@ if [ "$LOCAL_ONLY" = "yes" ]; then
   exit 0
 fi
 
-echo "== what GitHub will build"
-git fetch --quiet origin "$BRANCH"
-CURRENT_BRANCH="$(git branch --show-current)"
-if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
-  echo "You are on '$CURRENT_BRANCH', but TestFlight is built from '$BRANCH'."
+echo "== version and build"
+# the archive with the highest build number is the last one uploaded
+LAST_VERSION=""
+LAST_BUILD="0"
+for ARCHIVE_PATH in "$ARCHIVES_DIR"/*/"Nav2Pilot "*.xcarchive; do
+  if [ ! -f "$ARCHIVE_PATH/Info.plist" ]; then
+    continue
+  fi
+  ARCHIVE_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$ARCHIVE_PATH/Info.plist")"
+  ARCHIVE_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleVersion' "$ARCHIVE_PATH/Info.plist")"
+  if [ "$ARCHIVE_BUILD" -gt "$LAST_BUILD" ]; then
+    LAST_BUILD="$ARCHIVE_BUILD"
+    LAST_VERSION="$ARCHIVE_VERSION"
+  fi
+done
+if [ -z "$LAST_VERSION" ]; then
+  echo "No Nav2Pilot archive in $ARCHIVES_DIR: cannot tell the last version and build."
   exit 1
 fi
-if [ -n "$(git status --porcelain)" ]; then
-  echo "Uncommitted changes (they would NOT be in the TestFlight build):"
-  git status --short
-  exit 1
+BUILD="$((LAST_BUILD + 1))"
+if [ -n "$VERSION_ARG" ]; then
+  VERSION="$VERSION_ARG"
+else
+  IFS=. read -r MAJOR MINOR PATCH <<< "$LAST_VERSION"
+  VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
 fi
-AHEAD="$(git rev-list --count "origin/$BRANCH..HEAD")"
-if [ "$AHEAD" != "0" ]; then
-  echo "$AHEAD commit(s) not pushed yet: run 'git push' first, the TestFlight build uses GitHub's $BRANCH."
-  exit 1
-fi
-echo "$BRANCH at $(git log -1 --format='%h %s')"
+echo "last uploaded: $LAST_VERSION ($LAST_BUILD), new: $VERSION ($BUILD)"
 
-echo "== TestFlight build on GitHub Actions"
-gh workflow run "$WORKFLOW" -R "$GITHUB_REPO" --ref "$BRANCH"
-# the new run takes a few seconds to show up in the list
-sleep 8
-RUN_ID="$(gh run list -R "$GITHUB_REPO" --workflow "$WORKFLOW" --limit 1 --json databaseId --jq '.[0].databaseId')"
-echo "run: https://github.com/$GITHUB_REPO/actions/runs/$RUN_ID"
-gh run watch "$RUN_ID" -R "$GITHUB_REPO" --exit-status
+echo "== archive"
+# straight into Xcode's Archives folder, so it shows in the Organizer and the next run finds it
+ARCHIVE="$ARCHIVES_DIR/$(date +%Y-%m-%d)/Nav2Pilot $VERSION ($BUILD).xcarchive"
+xcodebuild -project Nav2Pilot.xcodeproj -scheme Nav2Pilot -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath build/DerivedData \
+  -archivePath "$ARCHIVE" \
+  -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM_ID" \
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+  archive 2>&1 | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)"
+
+echo "== export and upload to TestFlight"
+# system PATH: the export runs /usr/bin/rsync, which starts the first rsync in PATH as its other end, and
+# Homebrew's rsync rejects --extended-attributes ("Copy failed")
+rm -rf build/export
+PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/xcodebuild -exportArchive \
+  -archivePath "$ARCHIVE" \
+  -exportOptionsPlist scripts/ExportOptions.plist \
+  -exportPath build/export \
+  -allowProvisioningUpdates 2>&1 | grep -E "error:|Upload succeeded|EXPORT (SUCCEEDED|FAILED)"
 
 echo
-echo "Uploaded. TestFlight shows the new build after Apple's processing (usually 5-15 minutes)."
+echo "Uploaded $VERSION ($BUILD). TestFlight shows it after Apple's processing (usually 5-15 minutes)."
