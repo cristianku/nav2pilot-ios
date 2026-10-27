@@ -134,9 +134,20 @@ the send button on the left, the route map on the right.
   <img src="docs/screenshots/landscape.png" width="700" alt="Landscape layout: the destination on the left, the route map on the right">
 </p>
 
-CarPlay is not supported yet. CarPlay does not show ordinary apps: an app needs a dedicated car screen built
-from CarPlay templates, and a CarPlay entitlement that Apple grants on request. On Android, Nav2Pilot also
-runs on CarlinKit boxes that run Android (see the
+### CarPlay
+
+Nav2Pilot has a CarPlay screen, waiting for Apple: a CarPlay app needs a CarPlay entitlement that Apple grants
+on request, and TestFlight builds get CarPlay once Apple has granted it. On the screen:
+
+- **Destinations**: your favorites on the map, nearest first. Tap one and **Send to** your car.
+- **Car**: your cars with their status (online, software version). Pick the one to send to, or clear its
+  destination.
+
+CarPlay gives apps like this one Apple's map with pins only, so there is no route preview in the car: the
+car picks its own route. Setup stays on the iPhone (comma token, Mapbox, cars, favorites), and works with the
+iPhone locked in the car.
+
+On Android, Nav2Pilot also has an Android Auto screen and runs on CarlinKit boxes that run Android (see the
 [Android README](https://github.com/cristianku/nav2pilot#car-screens-carlinkit-android-auto-carplay)).
 
 ## If something doesn't work
@@ -149,6 +160,8 @@ runs on CarlinKit boxes that run Android (see the
 ## Privacy
 
 - Your comma token and your Mapbox token stay in the iOS Keychain of your iPhone: never synced, never logged.
+  They can be read once the iPhone has been unlocked after it was turned on, so that CarPlay works with the
+  iPhone locked.
 - The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links) and, if
   you set it up, to Mapbox. No analytics, no tracking.
 - Your position is used only for the route preview, and only Mapbox gets it.
@@ -302,6 +315,29 @@ Investigated, **not implemented** (the `SunnylinkTransport` backend is an explic
 - Not available: a documented API contract, and a supported way for a third-party app to obtain a sunnylink
   token (the frontend signs users in through its own Logto OIDC client).
 
+### CarPlay screen
+
+- Category **driving task** (entitlement `com.apple.developer.carplay-driving-task`, iOS 16+): the CarPlay
+  categories are fixed by Apple, navigation apps must give turn-by-turn directions, and driving task apps must
+  not be location finders. Driving task apps get lists, grids, information, alerts, action sheets, tab bars
+  and the point of interest template; no map of their own and no keyboard; two templates deep (three from
+  iOS 26.4).
+- Root: a tab bar. **Destinations** is a point of interest template (Apple's MapKit map, up to 12 places)
+  whose cards send the favorite; **Car** is a list of the cars with their status, plus clearing the
+  destination. Nothing is pushed, alerts show the result.
+- `CarPlaySceneDelegate` in `App/` is the scene of the `CPTemplateApplicationSceneSessionRoleApplication` role
+  in the scene manifest (`UIApplicationSupportsMultipleScenes` true: the iPhone window and CarPlay are two
+  scenes at once; SwiftUI keeps the window's own configuration).
+- The logic is in `CarScreenModel` (Nav2PilotKit, covered by `swift test`); sending goes through
+  `DestinationSender`, like the Send tab: the Mapbox token first, then the destination alone.
+- The screen rereads the App Group when `UserDefaults` change and when it becomes active, and updates its
+  templates in place. It uses the position only if the app already has location access: CarPlay never makes
+  the iPhone ask. Its texts never ask to pick up the iPhone (CarPlay guidelines).
+- Until Apple grants the entitlement, only simulator builds carry it, from `App/Nav2PilotSimulator.entitlements`
+  (`CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]` in `project.yml`): Simulator → I/O → External Displays →
+  CarPlay. Once granted: add the key to the Nav2Pilot target's `entitlements` in `project.yml`, enable the
+  capability on the App ID and let signing regenerate the profile.
+
 ### Architecture
 
 ```
@@ -313,12 +349,12 @@ Nav2PilotKit/                  Swift package: everything except the UI, tested w
     Geocode/                   PlaceSearch (MapKit local search)
     Mapbox/                    user's Mapbox token check, Directions previews, via points, phone location
     Net/                       HttpClient abstraction (ephemeral URLSession, redirects one hop at a time)
-    Transport/                 NavigationTransport + comma athena backend + sunnylink stub
+    Transport/                 NavigationTransport + comma athena backend + sunnylink stub, DestinationSender
     Security/                  Keychain store, token store, JWT expiry
     Data/                      favorites and devices (App Group UserDefaults + JSON)
-    App/                       MainViewModel (Observation), AppContainer (wiring)
+    App/                       MainViewModel (Observation), CarScreenModel (CarPlay), AppContainer (wiring)
   Tests/Nav2PilotKitTests/     unit tests, optional network tests
-App/                           SwiftUI app: Send, Favorites, Devices tabs
+App/                           SwiftUI app: Send, Favorites, Devices tabs; CarPlaySceneDelegate
 ShareExtension/                share sheet extension (resolves and sends without opening the app)
 Shared/                        SwiftUI views used by both the app and the extension
 AppTests/                      tests hosted in the app (real Keychain and App Group)
@@ -339,9 +375,11 @@ extension finds no stored devices but has the token, it lists them from the comm
 
 - The Mapbox public token is in the Keychain too and is sent only to `api.mapbox.com` and, through athena,
   to your own device.
-- The comma JWT is stored only in the iOS Keychain, with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`:
-  readable only while the iPhone is unlocked, never synced to iCloud Keychain, never restored to another
-  iPhone from a backup. Devices and favorites (not secret) are in the App Group's UserDefaults.
+- The comma JWT is stored only in the iOS Keychain, with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`:
+  readable after the first unlock since the iPhone was turned on, also while it is locked again (CarPlay runs
+  with the iPhone locked), never synced to iCloud Keychain, never restored to another iPhone from a backup.
+  Items saved by 1.0.x (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`) move to it the first time they are
+  read. Devices and favorites (not secret) are in the App Group's UserDefaults.
 - The token is never logged (the app has no logging), is excluded from `HttpRequest.description`, and is
   not shown again after saving.
 - Network traffic goes through an ephemeral URLSession (no cache, no cookies). Hosts contacted:

@@ -92,6 +92,8 @@ public final class MainViewModel {
     private let routePlanning: RoutePlanning?
     /// The Mapbox token that goes to the car with every destination, also from the share extension (no route map).
     private let mapboxTokenStore: TokenStore?
+    /// The same sender as CarPlay's: the Mapbox token first, then the destination or the route.
+    private let sender: DestinationSender
 
     private var resolveGeneration = 0
     private var connectionGeneration = 0
@@ -117,11 +119,16 @@ public final class MainViewModel {
         self.deviceRepository = deviceRepository
         self.now = now
         self.routePlanning = routePlanning
+        let tokens: TokenStore?
         if let store = mapboxTokenStore {
-            self.mapboxTokenStore = store
+            tokens = store
         } else {
-            self.mapboxTokenStore = routePlanning?.mapboxTokenStore
+            tokens = routePlanning?.mapboxTokenStore
         }
+        self.mapboxTokenStore = tokens
+        self.sender = DestinationSender(transports: transports, mapboxToken: {
+            return tokens?.load()
+        })
         geocoderAvailable = placeSearch.isAvailable()
         copyStoredData()
     }
@@ -357,32 +364,8 @@ public final class MainViewModel {
         }
         sending = true
         feedback = nil
-        // the Mapbox token goes with every destination, before it, so the first route request of the car already uses it
-        if let mapboxToken = mapboxTokenStore?.load() {
-            await sendMapboxToken(mapboxToken, to: device)
-        }
-        let waypoints = plannedWaypoints()
-        let result: Result<Delivery, TransportError>
-        if waypoints.isEmpty {
-            result = await transports.forDevice(device).setDestination(device, current)
-        } else {
-            result = await transports.forDevice(device).setRoute(device, current, waypoints: waypoints)
-        }
-        switch result {
-        case .success(let delivery):
-            var message = "Destination sent to \(device.displayName())."
-            if !waypoints.isEmpty {
-                message = "Route sent to \(device.displayName())."
-            }
-            if delivery.queued {
-                message = "Queued by athena: \(delivery.note)"
-            } else if !delivery.note.isEmpty {
-                message = "Destination sent to \(device.displayName()). " + delivery.note
-            }
-            feedback = SendFeedback(success: true, message: message, time: now())
-        case .failure(let error):
-            feedback = SendFeedback(success: false, message: TransportErrorText.describe(error), time: now())
-        }
+        let outcome = await sender.send(current, to: device, waypoints: plannedWaypoints())
+        feedback = SendFeedback(success: outcome.success, message: outcome.message, time: now())
         sending = false
     }
 

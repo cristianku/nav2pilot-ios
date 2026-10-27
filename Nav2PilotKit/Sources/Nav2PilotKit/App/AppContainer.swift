@@ -57,6 +57,31 @@ public enum AppContainer {
         )
     }
 
+    /// The CarPlay screen's model, on the same stored data and Keychain items as the app.
+    @MainActor
+    public static func makeCarScreenModel(bundle: Bundle = .main) -> CarScreenModel {
+        var defaults = UserDefaults.standard
+        if let groupDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+            defaults = groupDefaults
+        }
+        let dataStore = UserDefaultsStore(defaults: defaults)
+        let tokenStore = TokenStore(secrets: KeychainSecretStore(service: keychainService))
+        let httpClient = URLSessionHttpClient(userAgent: "Nav2Pilot/" + appVersion(bundle) + " (iOS)")
+        let comma = CommaAthenaTransport(
+            http: httpClient,
+            tokenProvider: {
+                return tokenStore.load()
+            }
+        )
+        return CarScreenModel(
+            tokenStore: tokenStore,
+            deviceRepository: DeviceRepository(store: dataStore),
+            favoritesRepository: FavoritesRepository(store: dataStore),
+            transports: TransportRegistry(comma: comma, sunnylink: SunnylinkTransport()),
+            mapboxTokenStore: TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
+        )
+    }
+
     private static func appVersion(_ bundle: Bundle) -> String {
         if let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String {
             return version

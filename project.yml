@@ -44,8 +44,14 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        # CarPlay is a second scene next to the iPhone window (CarPlaySceneDelegate); SwiftUI keeps the window's own
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: false
+          UIApplicationSupportsMultipleScenes: true
+          UISceneConfigurations:
+            CPTemplateApplicationSceneSessionRoleApplication:
+              - UISceneClassName: CPTemplateApplicationScene
+                UISceneConfigurationName: CarPlay
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).CarPlaySceneDelegate
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -73,6 +79,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.cristianku.nav2pilot
         PRODUCT_NAME: Nav2Pilot
+        # CarPlay needs Apple's driving task entitlement, granted on request. Until Apple grants it only simulator
+        # builds carry it; device builds would not sign without it in the provisioning profile.
+        CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]: App/Nav2PilotSimulator.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
