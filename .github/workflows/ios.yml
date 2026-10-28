@@ -1,9 +1,7 @@
 name: iOS build
 
+# Manual only: builds run locally, not on GitHub.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
