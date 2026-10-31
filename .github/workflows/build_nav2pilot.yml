@@ -1,10 +1,8 @@
 name: 4. Build Nav2Pilot
 run-name: Build Nav2Pilot (${{ github.ref_name }})
 on:
+  # Manual only: builds run locally on the Mac (scripts/build-release.sh).
   workflow_dispatch:
-  # TestFlight builds expire after 90 days: a monthly build keeps one installable.
-  schedule:
-    - cron: "17 6 1 * *" # 1st of the month, 06:17 UTC
 
 permissions:
   contents: read
