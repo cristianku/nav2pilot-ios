@@ -10,6 +10,7 @@
 		061351B8AFA494D1B83F34EB /* MapScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8B59913F37EB0A1904B3C8 /* MapScreenView.swift */; };
 		156DA2D34021E96999133E47 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EB95B8B34BF08AAE60ECD3A7 /* PrivacyInfo.xcprivacy */; };
 		1DA77A5DCA7356A5D5513123 /* NavMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F707510292D8D1AE3B8307 /* NavMapView.swift */; };
+		37DC05D0E81EADA7FCAEFB8F /* CarPlaySceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB3729F0282E6108AC0C055 /* CarPlaySceneDelegate.swift */; };
 		39293935927B05AADF4B9394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E8D289B632B3CABFE4BA5C4C /* Assets.xcassets */; };
 		40D04A90C52C990F0B8B0CD9 /* Nav2PilotKit in Frameworks */ = {isa = PBXBuildFile; productRef = 9A89611FA32E35B88B3A4FB8 /* Nav2PilotKit */; };
 		4920518ADF1512CB7FCD900B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A9C111FD77B6C8DA9208AB4 /* Assets.xcassets */; };
@@ -78,8 +79,10 @@
 		71CFAD44C40AD0179337DF2B /* KeychainTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTests.swift; sourceTree = "<group>"; };
 		76AB94206BDF627D97FE9D65 /* Nav2PilotAppTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = Nav2PilotAppTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		899EEC9625547D969D48F3CE /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		8DB3729F0282E6108AC0C055 /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
 		9492664AB59660886D50A92D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		95F707510292D8D1AE3B8307 /* NavMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavMapView.swift; sourceTree = "<group>"; };
+		985E200E7333C8C596067F92 /* Nav2PilotSimulator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nav2PilotSimulator.entitlements; sourceTree = "<group>"; };
 		AF41573FF417404944B237B9 /* FavoritesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesView.swift; sourceTree = "<group>"; };
 		B5EFC68C7C093A1AD900B881 /* Nav2PilotApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Nav2PilotApp.swift; sourceTree = "<group>"; };
 		B9708C5EE97E67D3DF4375F1 /* Nav2Pilot.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Nav2Pilot.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -178,6 +181,7 @@
 			isa = PBXGroup;
 			children = (
 				E8D289B632B3CABFE4BA5C4C /* Assets.xcassets */,
+				8DB3729F0282E6108AC0C055 /* CarPlaySceneDelegate.swift */,
 				DD7CDEEC457DBBBB563A142D /* DevicesView.swift */,
 				AF41573FF417404944B237B9 /* FavoritesView.swift */,
 				9492664AB59660886D50A92D /* Info.plist */,
@@ -185,6 +189,7 @@
 				4A8B59913F37EB0A1904B3C8 /* MapScreenView.swift */,
 				553FC59FE0DF8C213E5A1258 /* Nav2Pilot.entitlements */,
 				B5EFC68C7C093A1AD900B881 /* Nav2PilotApp.swift */,
+				985E200E7333C8C596067F92 /* Nav2PilotSimulator.entitlements */,
 				95F707510292D8D1AE3B8307 /* NavMapView.swift */,
 				EB95B8B34BF08AAE60ECD3A7 /* PrivacyInfo.xcprivacy */,
 			);
@@ -377,6 +382,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				37DC05D0E81EADA7FCAEFB8F /* CarPlaySceneDelegate.swift in Sources */,
 				6C23EEF110776F942D59B23E /* Components.swift in Sources */,
 				F33188D14A93E922E37BBC4F /* DevicesView.swift in Sources */,
 				BFF2B704281BB391E516AC3E /* FavoritesView.swift in Sources */,
@@ -641,6 +647,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = App/Nav2Pilot.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = App/Nav2PilotSimulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -695,6 +702,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = App/Nav2Pilot.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=iphonesimulator*]" = App/Nav2PilotSimulator.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				INFOPLIST_FILE = App/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
