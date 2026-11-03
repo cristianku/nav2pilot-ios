@@ -6,7 +6,8 @@
 #   scripts/build-release.sh --local   only the tests and the simulator build, nothing goes to TestFlight
 #
 # Version and build number come from the Nav2Pilot archives in Xcode's Archives folder: build = highest + 1.
-# Signing is automatic with the Xcode account (team TG24AHP9SF).
+# Signing: Apple's cloud signing with the App Store Connect API key when its file is on the Mac (works over ssh,
+# where the login keychain is locked), otherwise automatic signing with the Xcode account (team TG24AHP9SF).
 # pipefail: a failed test run or build stops the script, even though its output goes through grep
 set -euo pipefail
 
@@ -23,6 +24,21 @@ if [ "${1:-}" = "--local" ]; then
   LOCAL_ONLY="yes"
 elif [ -n "${1:-}" ]; then
   VERSION_ARG="$1"
+fi
+
+# App Store Connect API key of the account (Admin): not secret, the .p8 file is
+ASC_KEY_ID="${ASC_KEY_ID:-32ZVB7YVS2}"
+ASC_ISSUER_ID="${ASC_ISSUER_ID:-69a6de70-19f3-47e3-e053-5b8c7c11a4d1}"
+ASC_KEY="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
+AUTH=()
+ARCHIVE_SIGNING=()
+if [ -f "$ASC_KEY" ]; then
+  AUTH=(-authenticationKeyPath "$ASC_KEY" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+  # archived unsigned: the export signs it in the cloud with an Apple Distribution certificate
+  ARCHIVE_SIGNING=(CODE_SIGNING_ALLOWED=NO)
+  echo "cloud signing and upload with the App Store Connect API key $ASC_KEY_ID"
+else
+  echo "no API key in $ASC_KEY: signing with the Xcode account (needs the Mac's own session)"
 fi
 
 if [ "$LOCAL_ONLY" = "no" ]; then
@@ -97,8 +113,8 @@ xcodebuild -project Nav2Pilot.xcodeproj -scheme Nav2Pilot -configuration Release
   -destination 'generic/platform=iOS' \
   -derivedDataPath build/DerivedData \
   -archivePath "$ARCHIVE" \
-  -allowProvisioningUpdates DEVELOPMENT_TEAM="$TEAM_ID" \
-  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+  -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} DEVELOPMENT_TEAM="$TEAM_ID" \
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" ${ARCHIVE_SIGNING[@]+"${ARCHIVE_SIGNING[@]}"} \
   archive 2>&1 | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)"
 
 echo "== export and upload to TestFlight"
@@ -109,7 +125,7 @@ PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/bin/xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \
   -exportOptionsPlist scripts/ExportOptions.plist \
   -exportPath build/export \
-  -allowProvisioningUpdates 2>&1 | grep -E "error:|Upload succeeded|EXPORT (SUCCEEDED|FAILED)"
+  -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} 2>&1 | grep -E "error:|Upload succeeded|EXPORT (SUCCEEDED|FAILED)"
 
 echo
 echo "Uploaded $VERSION ($BUILD). TestFlight shows it after Apple's processing (usually 5-15 minutes)."
