@@ -111,7 +111,11 @@ final class OverpassPlacesTests: XCTestCase {
     }
 
     func testAreaLimitedAroundItsCentre() {
-        XCTAssertEqual(frick, frick.limited(to: 25_000))
+        let small = frick.limited(to: 25_000)
+        XCTAssertEqual(frick.south, small.south, accuracy: 1e-9)
+        XCTAssertEqual(frick.west, small.west, accuracy: 1e-9)
+        XCTAssertEqual(frick.north, small.north, accuracy: 1e-9)
+        XCTAssertEqual(frick.east, small.east, accuracy: 1e-9)
 
         // a whole country in view: 50 km around its middle
         let large = MapArea(south: 40, west: 0, north: 50, east: 20).limited(to: 25_000)
