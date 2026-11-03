@@ -14,6 +14,7 @@ public final class DestinationResolver {
     public static let sourceSearch = "Search"
     public static let sourceMap = "Map"
     public static let sourceFavorite = "Favorite"
+    public static let sourcePlaces = "OpenStreetMap"
 
     private static let maxResults = 5
 

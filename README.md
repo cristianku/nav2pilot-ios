@@ -31,6 +31,20 @@ On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2p
 You can also type an address, paste a map link or coordinates in the **Send** tab, and keep your favourite
 places one tap away.
 
+## Points of interest
+
+The button under the settings, at the top right of the map, opens a menu of places: fuel stations, EV
+charging, parking, rest areas, restaurants, cafés, supermarkets, hotels and pharmacies. Pick one and they show
+up on the part of the map you see (when the map shows a whole region, its middle, about 50 × 50 km). The
+button stays filled while they are on the map; **Hide places** in the same menu takes them away.
+
+Tap a place to make it your destination. If you already have one, the app asks whether to add the place as a
+stop on the way (a fuel station on a long drive) or to go there instead. The heart then keeps it in your
+favorites.
+
+The places come from OpenStreetMap, through a public Overpass server: free, no account, with or without a
+Mapbox token. They are on the iPhone only: CarPlay's driving task apps may not be place finders.
+
 ## What you need on the car
 
 - openpilot or sunnypilot with **Nav Alpha**, the navigation comma added to openpilot in October 2026. Older
@@ -162,9 +176,11 @@ On Android, Nav2Pilot also has an Android Auto screen and runs on CarlinKit boxe
 - Your comma token and your Mapbox token stay in the iOS Keychain of your iPhone: never synced, never logged.
   They can be read once the iPhone has been unlocked after it was turned on, so that CarPlay works with the
   iPhone locked.
-- The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links) and, if
-  you set it up, to Mapbox. No analytics, no tracking.
-- Your position is used only for the route preview, and only Mapbox gets it.
+- The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links and to
+  search), to OpenStreetMap's Overpass servers (when you ask for points of interest: the category and the part
+  of the map you see) and, if you set it up, to Mapbox. No analytics, no tracking.
+- Your position is used for the route preview, which only Mapbox gets, and as the area Apple's search looks
+  in first.
 
 Nav2Pilot is an independent project, not affiliated with comma.ai or sunnypilot.
 
@@ -184,7 +200,10 @@ tests. It only talks to documented network APIs, independently of the openpilot 
 - Coordinates from full Google Maps URLs, Maps URLs API links (`api=1`), legacy `q=` / `ll=` / `daddr=`
   links, `geo:` URIs, `google.navigation:` URIs and Apple Maps links. Short links (`maps.app.goo.gl`,
   `maps.apple/p/…`) are expanded by following redirects.
-- Manual entry: `lat, lng`, a pasted link, or an address search (Apple MapKit).
+- Manual entry: `lat, lng`, a pasted link, or an address search (Apple MapKit, looking around the phone's last
+  known position first).
+- **Points of interest**: nine categories from OpenStreetMap (Overpass API) in the part of the map in view; a
+  place becomes the destination or a stop (see "Points of interest").
 - **Mapbox (optional)**: your own Mapbox token is sent to the device, which then asks Mapbox for its routes
   instead of comma's route service (see "Mapbox token on the device"). The Send tab shows the fastest route and
   up to two alternatives from the phone's position, stops added with a long press. The device follows the
@@ -255,6 +274,23 @@ Notes:
 - `maps.apple/p/…` short links are expanded like Google short links, contacting only `maps.apple` and
   `maps.apple.com`. Their redirect target has not been checked with a real shared link yet; if it carries
   no coordinates, the shared text is geocoded as for Google.
+
+### Points of interest
+
+- Source: OpenStreetMap through the public Overpass API (`overpass-api.de`, then `overpass.private.coffee` when
+  the first answers 429, 5xx or not at all). No key; the requests carry the app's `User-Agent`.
+- Query: one `POST` (`data=` form field) per category picked: `nwr<tag filter>(south,west,north,east); out
+  center 200;`, so ways and relations (a fuel station drawn as an area) come back as their centre. The box is
+  the part of the map left visible by the panel and the buttons, cut to 25 km around its middle when the map is
+  zoomed out. Of the answer, the 50 places nearest to the middle are drawn.
+- Tags: `amenity=fuel`, `amenity=charging_station`, `amenity=parking` (not `access=private|no`),
+  `highway=services|rest_area`, `amenity=restaurant|fast_food`, `amenity=cafe`, `shop=supermarket`,
+  `tourism=hotel|motel`, `amenity=pharmacy` (`Places/Places.swift`), the same as the Android app. A place
+  without a `name` takes its `brand`, then its `operator`, then the category's name; the address comes from the
+  `addr:*` tags.
+- A tapped place goes to the device like any destination: its coordinates only, or as a stop
+  (`setNavRoute` waypoint with `via: false`).
+- Not in CarPlay: the driving task category does not allow location finders.
 
 ### Route map and waypoints
 
@@ -347,6 +383,7 @@ Nav2PilotKit/                  Swift package: everything except the UI, tested w
     Parsing/                   URL splitting, coordinates, Google / Apple Maps / geo: links, shared text
     Resolve/                   short-link expansion, link -> search fallback
     Geocode/                   PlaceSearch (MapKit local search)
+    Places/                    points of interest from OpenStreetMap (Overpass API)
     Mapbox/                    user's Mapbox token check, Directions previews, via points, phone location
     Net/                       HttpClient abstraction (ephemeral URLSession, redirects one hop at a time)
     Transport/                 NavigationTransport + comma athena backend + sunnylink stub, DestinationSender
@@ -384,9 +421,10 @@ extension finds no stored devices but has the token, it lists them from the comm
   not shown again after saving.
 - Network traffic goes through an ephemeral URLSession (no cache, no cookies). Hosts contacted:
   `api.commadotai.com`, `athena.comma.ai`, Google Maps and Apple Maps hosts (only to expand shared short
-  links), Apple's MapKit service (address search) and, only with a Mapbox token, `api.mapbox.com` (token check,
-  routes; the map SDK loads its tiles from Mapbox). No analytics. The phone's position is only used for the
-  route preview and sent only to Mapbox.
+  links), Apple's MapKit service (address search), the Overpass API servers (points of interest, only when a
+  category is picked) and, only with a Mapbox token, `api.mapbox.com` (token check, routes; the map SDK loads its
+  tiles from Mapbox). No analytics. The phone's position goes to Mapbox for the route preview and, as the search
+  region, to Apple's MapKit search; Overpass only gets the part of the map in view.
 - The paste buttons use SwiftUI's `PasteButton`, so the clipboard is read only when you tap them.
 
 ### Build

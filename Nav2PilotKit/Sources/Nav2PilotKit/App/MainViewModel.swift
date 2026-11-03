@@ -71,6 +71,16 @@ public final class MainViewModel {
     public private(set) var routesMessage = ""
     public private(set) var origin: LatLng?
 
+    // points of interest from OpenStreetMap on the map
+    /// The category shown (or being looked up), nil when the places are hidden.
+    public private(set) var placesCategory: PlaceCategory?
+    public private(set) var places: [Place] = []
+    public private(set) var placesLoading = false
+    /// Why no places are shown: none found, or OpenStreetMap could not answer.
+    public private(set) var placesMessage = ""
+    /// Incremented with each new placesMessage, so that the screen shows it once.
+    public private(set) var placesMessageRequest = 0
+
     // stored data
     public private(set) var devices: [PairedDevice] = []
     public private(set) var selectedDongleId = ""
@@ -94,10 +104,12 @@ public final class MainViewModel {
     private let mapboxTokenStore: TokenStore?
     /// The same sender as CarPlay's: the Mapbox token first, then the destination or the route.
     private let sender: DestinationSender
+    private let placesSource: OverpassPlaces?
 
     private var resolveGeneration = 0
     private var connectionGeneration = 0
     private var routesGeneration = 0
+    private var placesGeneration = 0
 
     public init(
         resolver: DestinationResolver,
@@ -108,6 +120,7 @@ public final class MainViewModel {
         deviceRepository: DeviceRepository,
         routePlanning: RoutePlanning? = nil,
         mapboxTokenStore: TokenStore? = nil,
+        places: OverpassPlaces? = nil,
         now: @escaping () -> Date = { Date() }
     ) {
         self.resolver = resolver
@@ -119,6 +132,7 @@ public final class MainViewModel {
         self.deviceRepository = deviceRepository
         self.now = now
         self.routePlanning = routePlanning
+        self.placesSource = places
         let tokens: TokenStore?
         if let store = mapboxTokenStore {
             tokens = store
@@ -695,6 +709,91 @@ public final class MainViewModel {
         }
         return waypoints
     }
+
+    // MARK: - points of interest
+
+    /// False in the share extension, which has no map.
+    public var placesAvailable: Bool {
+        return placesSource != nil
+    }
+
+    /// The places of `category` in `area`, the part of the map the user sees (nil until the map has reported it).
+    /// They stay on the map until hidden or replaced by another category.
+    public func showPlaces(_ category: PlaceCategory, in area: MapArea?) async {
+        guard let source = placesSource else {
+            return
+        }
+        placesGeneration += 1
+        let generation = placesGeneration
+        guard let area = area else {
+            hidePlaces()
+            placesNotice("The map is not ready yet. Try again in a moment.")
+            return
+        }
+        placesCategory = category
+        places = []
+        placesLoading = true
+        let result = await source.search(category, in: area.limited(to: MainViewModel.placesMaxHalfMeters))
+        if generation != placesGeneration {
+            // hidden or replaced by another category meanwhile
+            return
+        }
+        placesLoading = false
+        switch result {
+        case .success(let found):
+            if found.isEmpty {
+                placesCategory = nil
+                places = []
+                placesNotice(category.label + ": none in this part of the map.")
+                return
+            }
+            places = found
+        case .failure(let error):
+            placesCategory = nil
+            places = []
+            placesNotice(MainViewModel.placesErrorText(error))
+        }
+    }
+
+    public func hidePlaces() {
+        placesGeneration += 1
+        placesCategory = nil
+        places = []
+        placesLoading = false
+    }
+
+    /// A place tapped on the map becomes the destination; the places stay, to compare or add one as a stop.
+    public func choosePlace(_ place: Place) {
+        resolveGeneration += 1
+        destination = place.toDestination()
+        destinationSource = DestinationResolver.sourcePlaces
+        choices = []
+        resolving = false
+        resolveError = ""
+        feedback = nil
+        destinationChanged()
+    }
+
+    private func placesNotice(_ message: String) {
+        placesMessage = message
+        placesMessageRequest += 1
+    }
+
+    private static func placesErrorText(_ error: TransportError) -> String {
+        switch error {
+        case .rateLimited:
+            return "OpenStreetMap is busy (HTTP 429). Try again in a moment."
+        case .httpFailure(let code, _):
+            return "OpenStreetMap did not answer (HTTP \(code)). Try again in a moment."
+        case .deviceRejected(let reason):
+            return "OpenStreetMap: " + reason
+        default:
+            return TransportErrorText.describe(error)
+        }
+    }
+
+    // places are looked up at most this far from the middle of the map: 50 x 50 km
+    static let placesMaxHalfMeters = 25_000.0
 
     // sunnypilot setNavRoute accepts 20 waypoints; three are left for the via points of an alternative
     public static let maxStops = 10

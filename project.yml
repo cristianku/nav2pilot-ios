@@ -67,7 +67,7 @@ targets:
             CFBundleURLSchemes:
               - geo
         ITSAppUsesNonExemptEncryption: false
-        NSLocationWhenInUseUsageDescription: "The map opens on your position and the route preview starts from it. It is only sent to Mapbox, with your own token, to compute the routes."
+        NSLocationWhenInUseUsageDescription: "The map opens on your position, the route preview starts from it and the search looks around it first. It goes only to Mapbox, with your own token, for the routes and to Apple's map search."
     entitlements:
       path: App/Nav2Pilot.entitlements
       properties:

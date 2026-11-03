@@ -34,6 +34,24 @@ final class NetworkIntegrationTests: XCTestCase {
         XCTAssertEqual(45.464, results[0].latitude, accuracy: 0.01)
         XCTAssertEqual(9.19, results[0].longitude, accuracy: 0.01)
     }
+
+    /// Without the region Apple gives Zurich and Dietlikon first (tried on 31 October 2026).
+    func testMapKitSearchNearBaselFindsIkeaPratteln() async throws {
+        let basel = LatLng(latitude: 47.5596, longitude: 7.5886)
+        let results = try await MapKitPlaceSearch(nearby: { basel }).search("Ikea", maxResults: 5)
+        XCTAssertFalse(results.isEmpty)
+        XCTAssertLessThan(RouteShaping.distanceMeters(basel, LatLng(latitude: results[0].latitude, longitude: results[0].longitude)), 20_000)
+    }
+
+    func testOverpassFindsFuelStationsAroundFrick() async {
+        let http = URLSessionHttpClient(userAgent: "Nav2Pilot-tests")
+        let area = MapArea(south: 47.45, west: 7.95, north: 47.55, east: 8.10)
+        let result = await OverpassPlaces(http: http).search(.fuel, in: area)
+        guard case .success(let places) = result else {
+            return XCTFail("Overpass failed: \(result)")
+        }
+        XCTAssertFalse(places.isEmpty)
+    }
 }
 
 /// Read-only calls with a real comma token, skipped unless NAV2PILOT_COMMA_TOKEN is set:

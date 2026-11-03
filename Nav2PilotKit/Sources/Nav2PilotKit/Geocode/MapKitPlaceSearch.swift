@@ -3,9 +3,18 @@ import MapKit
 
 /// Search through Apple's MapKit local search (addresses and points of interest).
 ///
-/// It needs network access to Apple's map service; there is no API key and nothing to configure.
+/// It needs network access to Apple's map service; there is no API key and nothing to configure. Without a region
+/// Apple ranks the results for the whole country ("Ikea" near Basel gives Zurich first), so the phone's position,
+/// when known, is passed as the region to look in first.
 public final class MapKitPlaceSearch: PlaceSearch {
-    public init() {}
+    private let nearby: () async -> LatLng?
+
+    /// Half the side of the region around the phone, metres.
+    static let regionHalfMeters = 25_000.0
+
+    public init(nearby: @escaping () async -> LatLng? = { nil }) {
+        self.nearby = nearby
+    }
 
     public func isAvailable() -> Bool {
         return true
@@ -15,6 +24,9 @@ public final class MapKitPlaceSearch: PlaceSearch {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = query
         request.resultTypes = [.address, .pointOfInterest]
+        if let position = await nearby() {
+            request.region = MapKitPlaceSearch.searchRegion(around: position)
+        }
 
         let response: MKLocalSearch.Response
         do {
@@ -40,6 +52,12 @@ public final class MapKitPlaceSearch: PlaceSearch {
             destinations.append(toDestination(item))
         }
         return destinations
+    }
+
+    /// A hint, not a limit: places farther away are still found when nothing nearer matches.
+    static func searchRegion(around position: LatLng) -> MKCoordinateRegion {
+        let center = CLLocationCoordinate2D(latitude: position.latitude, longitude: position.longitude)
+        return MKCoordinateRegion(center: center, latitudinalMeters: regionHalfMeters * 2, longitudinalMeters: regionHalfMeters * 2)
     }
 
     private func toDestination(_ item: MKMapItem) -> Destination {

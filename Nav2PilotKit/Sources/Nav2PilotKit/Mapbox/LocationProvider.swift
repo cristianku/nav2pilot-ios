@@ -29,17 +29,45 @@ public final class CoreLocationProvider: NSObject, LocationProvider, CLLocationM
         }
     }
 
+    /// The last fix CoreLocation already has, without asking for the permission or waiting for a new one: nil when
+    /// there is none from the last half hour. For hints that must not slow anything down, like the search region.
+    public func recentLocation() async -> LatLng? {
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.main.async {
+                continuation.resume(returning: self.cachedLocation())
+            }
+        }
+    }
+
+    private static let recentMaxAgeSeconds: TimeInterval = 1800
+
+    private func cachedLocation() -> LatLng? {
+        let manager = locationManager()
+        switch manager.authorizationStatus {
+        case .authorizedWhenInUse, .authorizedAlways:
+            break
+        default:
+            return nil
+        }
+        guard let location = manager.location, -location.timestamp.timeIntervalSinceNow < CoreLocationProvider.recentMaxAgeSeconds else {
+            return nil
+        }
+        return LatLng(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
+    }
+
+    private func locationManager() -> CLLocationManager {
+        if let existing = manager {
+            return existing
+        }
+        let created = CLLocationManager()
+        created.delegate = self
+        created.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        manager = created
+        return created
+    }
+
     private func request() {
-        if manager == nil {
-            let created = CLLocationManager()
-            created.delegate = self
-            created.desiredAccuracy = kCLLocationAccuracyHundredMeters
-            manager = created
-        }
-        guard let manager = manager else {
-            finish(nil)
-            return
-        }
+        let manager = locationManager()
         if let recent = manager.location, -recent.timestamp.timeIntervalSinceNow < CoreLocationProvider.maxAgeSeconds {
             finish(recent)
             return

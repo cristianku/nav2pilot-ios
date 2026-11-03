@@ -1,7 +1,7 @@
 import Nav2PilotKit
 import SwiftUI
 
-/// The only screen: the map fills it. Search, car, settings and favorites float on top; the destination panel comes
+/// The only screen: the map fills it. Search, car, settings, places and favorites float on top; the destination panel comes
 /// up from the bottom (phone) or sits in a column on the left (landscape: the driver's side in left-hand-drive cars)
 /// once there is a destination.
 struct MapScreenView: View {
@@ -15,6 +15,12 @@ struct MapScreenView: View {
     @State private var query = ""
     @State private var panelSize = CGSize.zero
     @FocusState private var searchFocused: Bool
+    // the part of the map in view, where the places are looked for; a box, so a map move does not redraw the screen
+    @State private var mapArea = MapAreaBox()
+    // a place tapped while there is already a destination: a stop, or the destination instead
+    @State private var tappedPlace: Place?
+    // "none found" and the errors of the places menu, for a few seconds
+    @State private var placesNote = ""
 
     // narrower than this, or taller than wide, stays the phone layout
     private static let wideMinWidth: CGFloat = 600
@@ -33,7 +39,8 @@ struct MapScreenView: View {
             routes: viewModel.routes,
             selectedRouteIndex: viewModel.selectedRouteIndex,
             origin: viewModel.origin,
-            recenterRequest: viewModel.recenterRequest
+            recenterRequest: viewModel.recenterRequest,
+            places: viewModel.places
         )
         let token = mapboxToken()
         GeometryReader { geometry in
@@ -53,6 +60,12 @@ struct MapScreenView: View {
                     },
                     onSelectRoute: { index in
                         viewModel.selectRoute(index)
+                    },
+                    onTapPlace: { index in
+                        placeTapped(index)
+                    },
+                    onAreaChange: { area in
+                        mapArea.value = area
                     }
                 )
                 .ignoresSafeArea()
@@ -67,6 +80,47 @@ struct MapScreenView: View {
                 if viewModel.destination == nil {
                     bottomButtons()
                 }
+
+                if !placesNote.isEmpty {
+                    placesNoteView()
+                }
+            }
+        }
+        .confirmationDialog(
+            tappedPlace?.name ?? "",
+            isPresented: Binding(
+                get: { tappedPlace != nil },
+                set: { shown in
+                    if !shown {
+                        tappedPlace = nil
+                    }
+                }
+            ),
+            titleVisibility: .visible,
+            presenting: tappedPlace
+        ) { place in
+            if viewModel.stops.count < MainViewModel.maxStops {
+                Button("Add as stop") {
+                    Task {
+                        await viewModel.addStop(latitude: place.latitude, longitude: place.longitude)
+                    }
+                }
+            }
+            Button("Go here instead") {
+                viewModel.choosePlace(place)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { place in
+            Text(MapScreenView.placeDescription(place))
+        }
+        .task(id: viewModel.placesMessageRequest) {
+            if viewModel.placesMessageRequest == 0 {
+                return
+            }
+            placesNote = viewModel.placesMessage
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled {
+                placesNote = ""
             }
         }
         .task {
@@ -98,9 +152,9 @@ struct MapScreenView: View {
 
     private func mapInsets(wide: Bool, panelWidth: CGFloat, safeArea: EdgeInsets) -> MapInsets {
         var insets = MapInsets()
-        // the top controls: one row, two with the car under the search
+        // the top controls: one row, two with the car and the places under the search and the settings
         insets.top = safeArea.top + 76
-        if searchVisible() && !searchEditing {
+        if secondRowVisible() {
             insets.top += MapScreenView.buttonSize + 10
         }
         // Apple's legal label must stay visible: with a destination above the panel on the phone, right of it in
@@ -122,6 +176,10 @@ struct MapScreenView: View {
 
     private func searchVisible() -> Bool {
         return viewModel.destination == nil || searchShown || searchEditing
+    }
+
+    private func secondRowVisible() -> Bool {
+        return !searchEditing && (searchVisible() || viewModel.placesAvailable)
     }
 
     private func mapboxToken() -> String? {
@@ -149,13 +207,59 @@ struct MapScreenView: View {
         }
     }
 
+    /// With no destination yet the place becomes it; otherwise the user picks: a stop, or the destination instead.
+    private func placeTapped(_ index: Int) {
+        if index >= viewModel.places.count {
+            return
+        }
+        let place = viewModel.places[index]
+        guard let current = viewModel.destination else {
+            viewModel.choosePlace(place)
+            return
+        }
+        if !place.toDestination().sameLocationAs(current) {
+            tappedPlace = place
+        }
+    }
+
+    /// The address, and the kind of place when the name does not say it already.
+    private static func placeDescription(_ place: Place) -> String {
+        var lines: [String] = []
+        if !place.details.isEmpty {
+            lines.append(place.details)
+        }
+        if place.name != place.category.singular {
+            lines.append(place.category.singular)
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private func placesNoteView() -> some View {
+        VStack {
+            Spacer()
+            Text(placesNote)
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Theme.card, in: Capsule())
+                .shadow(color: .black.opacity(0.2), radius: 8, y: 3)
+                .padding(.horizontal, 24)
+                .padding(.bottom, viewModel.destination == nil ? MapScreenView.buttonSize + 32 : panelSize.height + 16)
+        }
+        .frame(maxWidth: .infinity)
+        .allowsHitTesting(false)
+        .transition(.opacity)
+    }
+
     private func stopEditing() {
         searchEditing = false
         searchFocused = false
         viewModel.dismissChoices()
     }
 
-    // MARK: - top: search and settings, the car under the search (in its place when the search is hidden)
+    // MARK: - top: search and settings, the car under the search (in its place when the search is hidden), the places
+    // under the settings
 
     private func topControls(wide: Bool, panelWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -173,8 +277,20 @@ struct MapScreenView: View {
                     MapButton(systemName: "gearshape.fill", label: "Settings", action: openSettings)
                 }
             }
-            if searchVisible() && !searchEditing {
-                carButton()
+            if secondRowVisible() {
+                HStack(alignment: .top, spacing: 8) {
+                    Group {
+                        if searchVisible() {
+                            carButton()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if viewModel.placesAvailable {
+                        PlacesButton(viewModel: viewModel, area: {
+                            return mapArea.value
+                        })
+                    }
+                }
             }
         }
         .padding(.leading, (wide && viewModel.destination != nil ? panelWidth : 0) + 12)
@@ -743,6 +859,62 @@ private struct DestinationPanel: View {
             .controlSize(.large)
         }
     }
+}
+
+/// Points of interest: the categories in a menu; the one picked is looked up in the part of the map in view.
+private struct PlacesButton: View {
+    let viewModel: MainViewModel
+    let area: () -> MapArea?
+
+    var body: some View {
+        let shown = viewModel.placesCategory != nil
+        Menu {
+            Section("From OpenStreetMap, in the part of the map you see. Tap a place on the map to go there.") {
+                ForEach(PlaceCategory.allCases) { category in
+                    Button {
+                        Task {
+                            await viewModel.showPlaces(category, in: area())
+                        }
+                    } label: {
+                        if category == viewModel.placesCategory {
+                            Label(category.label, systemImage: "checkmark")
+                        } else {
+                            Label(category.label, systemImage: category.symbolName)
+                        }
+                    }
+                }
+            }
+            Section {
+                Button {
+                    viewModel.hidePlaces()
+                } label: {
+                    Label("Hide places", systemImage: "xmark")
+                }
+                .disabled(!shown)
+            }
+        } label: {
+            ZStack {
+                if viewModel.placesLoading {
+                    ProgressView()
+                        .tint(shown ? Theme.onAccent : Theme.brand)
+                } else {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.title3)
+                        .foregroundStyle(shown ? Theme.onAccent : Theme.brand)
+                }
+            }
+            .frame(width: 52, height: 52)
+            .background(shown ? Theme.brand : Theme.card, in: Circle())
+            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+        }
+        .menuOrder(.fixed)
+        .accessibilityLabel("Points of interest")
+    }
+}
+
+/// The part of the map in view, kept by reference: the map reports it after every move without redrawing the screen.
+final class MapAreaBox {
+    var value: MapArea?
 }
 
 /// Round floating button on the map, at least 52 points for use in the car.

@@ -18,11 +18,14 @@ struct MapContent: Equatable {
     var selectedRouteIndex = 0
     var origin: LatLng?
     var recenterRequest = 0
+    /// Points of interest from OpenStreetMap, drawn under the destination and the stops.
+    var places: [Place] = []
 }
 
 /// The full-screen map: Apple Maps for everybody (free, no key), with Mapbox Streets tiles on top when the user has a
 /// Mapbox token, so their Mapbox routes are shown on a Mapbox map. Shows the phone's position, the destination, the
-/// stops and the routes; a tap reports itself or picks the route under it, a long press reports its coordinate.
+/// stops, the routes and the points of interest; a tap reports itself, picks the route under it or reports the place
+/// under it, a long press reports its coordinate. The part of the map in view is reported after every move.
 struct NavMapView: UIViewRepresentable {
     let content: MapContent
     let mapboxToken: String?
@@ -30,6 +33,8 @@ struct NavMapView: UIViewRepresentable {
     let onTap: () -> Void
     let onLongPress: (Double, Double) -> Void
     let onSelectRoute: (Int) -> Void
+    let onTapPlace: (Int) -> Void
+    let onAreaChange: (MapArea) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -44,6 +49,7 @@ struct NavMapView: UIViewRepresentable {
         map.showsCompass = true
         map.pointOfInterestFilter = .includingAll
         map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: Coordinator.pinReuseId)
+        map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: Coordinator.placeReuseId)
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
         tap.delegate = context.coordinator
@@ -59,6 +65,8 @@ struct NavMapView: UIViewRepresentable {
         coordinator.onTap = onTap
         coordinator.onLongPress = onLongPress
         coordinator.onSelectRoute = onSelectRoute
+        coordinator.onTapPlace = onTapPlace
+        coordinator.onAreaChange = onAreaChange
         coordinator.selectedRouteIndex = content.selectedRouteIndex
         coordinator.routeColor = UIColor(Theme.brand)
 
@@ -68,15 +76,19 @@ struct NavMapView: UIViewRepresentable {
         coordinator.updateBaseMap(map, mapboxToken: mapboxToken, dark: colorScheme == .dark)
         coordinator.updateRoutes(map, routes: content.routes)
         coordinator.updatePins(map, destination: content.destination, stops: content.stops)
+        coordinator.updatePlaces(map, places: content.places)
         coordinator.moveCamera(map, content: content, insets: insets)
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         static let pinReuseId = "pin"
+        static let placeReuseId = "place"
 
         var onTap: () -> Void = {}
         var onLongPress: (Double, Double) -> Void = { _, _ in }
         var onSelectRoute: (Int) -> Void = { _ in }
+        var onTapPlace: (Int) -> Void = { _ in }
+        var onAreaChange: (MapArea) -> Void = { _ in }
         var selectedRouteIndex = 0
         var routeColor = UIColor.systemTeal
 
@@ -86,6 +98,7 @@ struct NavMapView: UIViewRepresentable {
         private var drawnSelected = -1
         private var routeLines: [RouteLine] = []
         private var drawnPinsKey = ""
+        private var drawnPlaces: [Place] = []
         private var fitted: FitKey?
         private var recenterSeen = 0
         private var centeredOnce = false
@@ -207,7 +220,70 @@ struct NavMapView: UIViewRepresentable {
             }
         }
 
+        // MARK: points of interest
+
+        func updatePlaces(_ map: MKMapView, places: [Place]) {
+            if places == drawnPlaces {
+                return
+            }
+            drawnPlaces = places
+            var old: [MKAnnotation] = []
+            for annotation in map.annotations {
+                if annotation is PlaceAnnotation {
+                    old.append(annotation)
+                }
+            }
+            map.removeAnnotations(old)
+            for (index, place) in places.enumerated() {
+                let annotation = PlaceAnnotation()
+                annotation.coordinate = CLLocationCoordinate2D(latitude: place.latitude, longitude: place.longitude)
+                annotation.title = place.name
+                annotation.index = index
+                annotation.category = place.category
+                map.addAnnotation(annotation)
+            }
+        }
+
+        /// A tapped place goes to the screen at once: no callout, and it can be tapped again.
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            guard let place = view.annotation as? PlaceAnnotation else {
+                return
+            }
+            mapView.deselectAnnotation(place, animated: false)
+            onTapPlace(place.index)
+        }
+
+        /// The part of the map left visible by the panel and the buttons (the margins), or the whole map.
+        func mapView(_ mapView: MKMapView, regionDidChangeAnimated animated: Bool) {
+            var region = mapView.region
+            let visible = mapView.bounds.inset(by: mapView.layoutMargins)
+            if visible.width > 40 && visible.height > 40 {
+                region = mapView.convert(visible, toRegionFrom: mapView)
+            }
+            onAreaChange(
+                MapArea(
+                    south: region.center.latitude - region.span.latitudeDelta / 2,
+                    west: region.center.longitude - region.span.longitudeDelta / 2,
+                    north: region.center.latitude + region.span.latitudeDelta / 2,
+                    east: region.center.longitude + region.span.longitudeDelta / 2
+                )
+            )
+        }
+
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
+            if let place = annotation as? PlaceAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: Coordinator.placeReuseId, for: annotation)
+                guard let marker = view as? MKMarkerAnnotationView else {
+                    return view
+                }
+                marker.markerTintColor = routeColor
+                marker.glyphImage = UIImage(systemName: place.category.symbolName)
+                marker.glyphText = nil
+                // the destination and the stops stay on top; places may hide each other when zoomed out
+                marker.displayPriority = .defaultHigh
+                marker.canShowCallout = false
+                return marker
+            }
             guard let pin = annotation as? Pin else {
                 // the phone's own position keeps the system blue dot
                 return nil
@@ -303,6 +379,10 @@ struct NavMapView: UIViewRepresentable {
             guard let map = recognizer.view as? MKMapView else {
                 return
             }
+            // a tap on a place is handled by didSelect
+            if placeAt(map, point: recognizer.location(in: map)) {
+                return
+            }
             let index = routeAt(map, point: recognizer.location(in: map))
             if index >= 0 {
                 onSelectRoute(index)
@@ -325,6 +405,17 @@ struct NavMapView: UIViewRepresentable {
         /// Our tap must not block the map's own gestures (pan, zoom, its double tap).
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
             return true
+        }
+
+        private func placeAt(_ map: MKMapView, point: CGPoint) -> Bool {
+            var view = map.hitTest(point, with: nil)
+            while let current = view {
+                if let annotationView = current as? MKAnnotationView, annotationView.annotation is PlaceAnnotation {
+                    return true
+                }
+                view = current.superview
+            }
+            return false
         }
 
         /// The index of the unpicked route drawn under a tap, or -1.
@@ -365,6 +456,29 @@ final class RouteLine: MKPolyline {
 /// The destination (stopNumber 0) or a stop (1, 2, …).
 final class Pin: MKPointAnnotation {
     var stopNumber = 0
+}
+
+/// A point of interest, with its index in the view model's list.
+final class PlaceAnnotation: MKPointAnnotation {
+    var index = 0
+    var category = PlaceCategory.fuel
+}
+
+extension PlaceCategory {
+    /// The SF Symbol on the map and in the places menu.
+    var symbolName: String {
+        switch self {
+        case .fuel: return "fuelpump.fill"
+        case .charging: return "bolt.fill"
+        case .parking: return "parkingsign"
+        case .restArea: return "signpost.right.fill"
+        case .restaurant: return "fork.knife"
+        case .cafe: return "cup.and.saucer.fill"
+        case .supermarket: return "cart.fill"
+        case .hotel: return "bed.double.fill"
+        case .pharmacy: return "cross.case.fill"
+        }
+    }
 }
 
 /// The camera moves again only when one of these changes, not when a route is picked.

@@ -9,7 +9,8 @@ public enum AppContainer {
     public static let keychainService = "com.cristianku.nav2pilot"
 
     @MainActor
-    /// `withRoutePlanning`: the Mapbox route map, in the app only (the share extension sends the destination alone).
+    /// `withRoutePlanning`: the map with its routes and places, in the app only (the share extension sends the
+    /// destination alone).
     public static func makeViewModel(bundle: Bundle = .main, withRoutePlanning: Bool = false) -> MainViewModel {
         var defaults = UserDefaults.standard
         if let groupDefaults = UserDefaults(suiteName: appGroupIdentifier) {
@@ -25,7 +26,11 @@ public enum AppContainer {
                 return tokenStore.load()
             }
         )
-        let placeSearch = MapKitPlaceSearch()
+        // the app's location, also the search region: the share extension has no location permission of its own
+        let location = CoreLocationProvider()
+        let placeSearch = MapKitPlaceSearch(nearby: {
+            return await location.recentLocation()
+        })
         let resolver = DestinationResolver(
             shortLinkResolver: ShortLinkResolver(http: httpClient),
             placeSearch: placeSearch
@@ -34,14 +39,16 @@ public enum AppContainer {
         // in the shared Keychain group, so the share extension sends it to the car too
         let mapboxTokenStore = TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
         var routePlanning: RoutePlanning?
+        var places: OverpassPlaces?
         if withRoutePlanning {
+            places = OverpassPlaces(http: httpClient)
             routePlanning = RoutePlanning(
                 mapboxTokenStore: mapboxTokenStore,
                 verifier: MapboxTokenVerifier(http: httpClient),
                 directions: MapboxDirections(http: httpClient, tokenProvider: {
                     return mapboxTokenStore.load()
                 }),
-                location: CoreLocationProvider()
+                location: location
             )
         }
 
@@ -53,7 +60,8 @@ public enum AppContainer {
             favoritesRepository: FavoritesRepository(store: dataStore),
             deviceRepository: DeviceRepository(store: dataStore),
             routePlanning: routePlanning,
-            mapboxTokenStore: mapboxTokenStore
+            mapboxTokenStore: mapboxTokenStore,
+            places: places
         )
     }
 
