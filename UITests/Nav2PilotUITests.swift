@@ -138,6 +138,22 @@ final class Nav2PilotUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Your places, one tap away"].waitForExistence(timeout: 5))
     }
 
+    /// Only the menu: picking a category would ask OpenStreetMap, and these tests stay offline.
+    func testPlacesMenuListsTheNineCategories() {
+        let app = XCUIApplication()
+        app.launch()
+
+        let places = app.buttons["Points of interest"]
+        XCTAssertTrue(places.waitForExistence(timeout: 15))
+        places.tap()
+        for label in ["Fuel stations", "EV charging", "Parking", "Rest areas", "Restaurants", "Cafés", "Supermarkets", "Hotels", "Pharmacies"] {
+            XCTAssertTrue(app.buttons[label].waitForExistence(timeout: 5), label)
+        }
+        // nothing shown yet, so nothing to hide
+        XCTAssertFalse(app.buttons["Hide places"].isEnabled)
+        attachScreenshot(app, "Places")
+    }
+
     private func attachScreenshot(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

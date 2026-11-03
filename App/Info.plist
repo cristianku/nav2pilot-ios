@@ -34,7 +34,7 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>The map opens on your position and the route preview starts from it. It is only sent to Mapbox, with your own token, to compute the routes.</string>
+	<string>The map opens on your position, the route preview starts from it and the search looks around it first. It goes only to Mapbox, with your own token, for the routes and to Apple's map search.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
