@@ -56,7 +56,7 @@ final class OverpassPlacesTests: XCTestCase {
 
     func testSearchPostsTheQueryAndTriesTheNextServerWhenOneIsBusy() async {
         let http = FakeHttpClient()
-        let places = OverpassPlaces(http: http, endpoints: [firstServer, secondServer])
+        let places = OverpassPlaces(http: http, endpoints: { _ in [firstServer, secondServer] })
 
         http.respond(429, "")
         http.respond(200, overpassAnswer)
@@ -77,7 +77,7 @@ final class OverpassPlacesTests: XCTestCase {
 
     func testSearchReportsWhatWentWrong() async {
         let http = FakeHttpClient()
-        let places = OverpassPlaces(http: http, endpoints: [firstServer, secondServer])
+        let places = OverpassPlaces(http: http, endpoints: { _ in [firstServer, secondServer] })
 
         // both busy: the last answer
         http.fail("timeout")
@@ -98,14 +98,63 @@ final class OverpassPlacesTests: XCTestCase {
         XCTAssertEqual(400, refusedCode)
         XCTAssertEqual(1, http.requests.count)
 
-        // out of time: 200 with a remark and no elements
-        http.respond(200, #"{"elements": [], "remark": "runtime error: Query timed out in \"query\" at line 1 after 21 seconds."}"#)
+        // out of time on both: 200 with a remark and no elements
+        let outOfTime = #"{"elements": [], "remark": "runtime error: Query timed out in \"query\" at line 1 after 21 seconds."}"#
+        http.respond(200, outOfTime)
+        http.respond(200, outOfTime)
         let timedOut = await places.search(.fuel, in: frick)
         guard case .failure(.deviceRejected) = timedOut else {
             return XCTFail("expected a rejection, got \(timedOut)")
         }
 
         http.respond(200, #"{"elements": []}"#)
+        let none = await places.search(.fuel, in: frick)
+        XCTAssertEqual(.success([]), none)
+    }
+
+    func testAServerThatRefusesTheAppOrAnswersBadlyLeavesItToTheNext() async {
+        let http = FakeHttpClient()
+        let places = OverpassPlaces(http: http, endpoints: { _ in [firstServer, secondServer] })
+
+        http.respond(406, "<html>Not Acceptable</html>")
+        http.respond(200, overpassAnswer)
+        let refused = await places.search(.fuel, in: frick)
+        guard case .success(let found) = refused else {
+            return XCTFail("expected places, got \(refused)")
+        }
+        XCTAssertEqual(3, found.count)
+
+        http.respond(200, "<html>rate_limited</html>")
+        http.respond(200, overpassAnswer)
+        let notJson = await places.search(.fuel, in: frick)
+        guard case .success(let foundAgain) = notJson else {
+            return XCTFail("expected places, got \(notJson)")
+        }
+        XCTAssertEqual(3, foundAgain.count)
+    }
+
+    func testTheSwissServerIsAskedFirstOnlyAroundSwitzerland() {
+        XCTAssertEqual(OverpassEndpoints.switzerland, OverpassEndpoints.forArea(frick).first)
+        XCTAssertEqual(3, OverpassEndpoints.forArea(frick).count)
+        let milan = MapArea(south: 45.40, west: 9.10, north: 45.50, east: 9.25)
+        XCTAssertEqual(OverpassEndpoints.interpreters, OverpassEndpoints.forArea(milan))
+    }
+
+    func testNoneOnTheSwissServerIsCheckedAcrossTheBorder() async {
+        let http = FakeHttpClient()
+        let places = OverpassPlaces(http: http, endpoints: { _ in [OverpassEndpoints.switzerland, firstServer] })
+
+        http.respond(200, #"{"elements": []}"#)
+        http.respond(200, overpassAnswer)
+        let across = await places.search(.fuel, in: frick)
+        guard case .success(let found) = across else {
+            return XCTFail("expected places, got \(across)")
+        }
+        XCTAssertEqual(3, found.count)
+
+        // the world servers are busy: still "none", not an error
+        http.respond(200, #"{"elements": []}"#)
+        http.fail("timeout")
         let none = await places.search(.fuel, in: frick)
         XCTAssertEqual(.success([]), none)
     }
@@ -159,7 +208,7 @@ final class PlacesViewModelTests: XCTestCase {
         let search = FakePlaceSearch()
         var places: OverpassPlaces?
         if withPlaces {
-            places = OverpassPlaces(http: http, endpoints: [firstServer])
+            places = OverpassPlaces(http: http, endpoints: { _ in [firstServer] })
         }
         return MainViewModel(
             resolver: DestinationResolver(shortLinkResolver: ShortLinkResolver(http: http), placeSearch: search),

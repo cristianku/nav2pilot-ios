@@ -2,18 +2,30 @@ import Foundation
 
 /// Public Overpass API servers (OpenStreetMap data, free and without a key), tried in this order.
 public enum OverpassEndpoints {
+    /// Answers in under a second, but has only Switzerland and the land along its border.
+    public static let switzerland = "https://overpass.osm.ch/api/interpreter"
+
     public static let interpreters = [
         "https://overpass-api.de/api/interpreter",
         // the main server answers 429 or 504 when it is busy
         "https://overpass.private.coffee/api/interpreter",
     ]
+
+    /// The servers for `area`: the Swiss one first when its middle is around Switzerland.
+    public static func forArea(_ area: MapArea) -> [String] {
+        let center = area.center()
+        if (45.8...47.9).contains(center.latitude) && (5.9...10.5).contains(center.longitude) {
+            return [switzerland] + interpreters
+        }
+        return interpreters
+    }
 }
 
 /// Points of interest from OpenStreetMap through the Overpass API: the places of one category in the part of the
 /// map the user sees, nearest to its middle first. Works for everybody, with or without a Mapbox token.
 public final class OverpassPlaces {
     private let http: HttpClient
-    private let endpoints: [String]
+    private let endpoints: (MapArea) -> [String]
 
     /// Places shown on the map at most; more would hide it.
     public static let maxPlaces = 50
@@ -21,7 +33,7 @@ public final class OverpassPlaces {
     // fetched to pick the maxPlaces nearest to the middle
     private static let maxFetched = 200
 
-    public init(http: HttpClient, endpoints: [String] = OverpassEndpoints.interpreters) {
+    public init(http: HttpClient, endpoints: @escaping (MapArea) -> [String] = OverpassEndpoints.forArea) {
         self.http = http
         self.endpoints = endpoints
     }
@@ -29,7 +41,8 @@ public final class OverpassPlaces {
     public func search(_ category: PlaceCategory, in area: MapArea) async -> Result<[Place], TransportError> {
         let body = "data=" + OverpassPlaces.formEncode(OverpassPlaces.query(category, area))
         var failure = TransportError.network("no Overpass server")
-        for endpoint in endpoints {
+        var noneInSwitzerland = false
+        for endpoint in endpoints(area) {
             let request = HttpRequest(
                 method: "POST",
                 url: endpoint,
@@ -46,28 +59,39 @@ public final class OverpassPlaces {
                 failure = .network(error.localizedDescription)
                 continue
             }
-            // busy or down: the next server may answer
+            // a query the server cannot read: the others would refuse it too
+            if response.code == 400 {
+                return .failure(.httpFailure(code: response.code, detail: ErrorText.fromHttpBody(response.body)))
+            }
+            // busy, down or refusing this client: the next server may answer
             if response.code == 429 {
                 failure = .rateLimited
                 continue
             }
-            if response.code >= 500 {
+            if !response.isSuccessful() {
                 failure = .httpFailure(code: response.code, detail: ErrorText.fromHttpBody(response.body))
                 continue
             }
-            if !response.isSuccessful() {
-                return .failure(.httpFailure(code: response.code, detail: ErrorText.fromHttpBody(response.body)))
-            }
             guard let json = Json.parseObject(response.body) else {
-                return .failure(.malformed(ErrorText.shorten(response.body)))
+                failure = .malformed(ErrorText.shorten(response.body))
+                continue
             }
             let places = OverpassPlaces.parsePlaces(json, category: category, center: area.center(), limit: OverpassPlaces.maxPlaces)
             // a query that ran out of time or memory comes back as 200 with a remark and no elements
             let remark = Json.string(json, "remark").trimmingCharacters(in: .whitespacesAndNewlines)
             if places.isEmpty && !remark.isEmpty {
-                return .failure(.deviceRejected(ErrorText.shorten(remark)))
+                failure = .deviceRejected(ErrorText.shorten(remark))
+                continue
+            }
+            // the Swiss server stops at the border: the places may be just across it
+            if places.isEmpty && endpoint == OverpassEndpoints.switzerland {
+                noneInSwitzerland = true
+                continue
             }
             return .success(places)
+        }
+        if noneInSwitzerland {
+            return .success([])
         }
         return .failure(failure)
     }

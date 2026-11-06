@@ -277,8 +277,10 @@ Notes:
 
 ### Points of interest
 
-- Source: OpenStreetMap through the public Overpass API (`overpass-api.de`, then `overpass.private.coffee` when
-  the first answers 429, 5xx or not at all). No key; the requests carry the app's `User-Agent`.
+- Source: OpenStreetMap through the public Overpass API. Around Switzerland `overpass.osm.ch` comes first: it
+  answers in under a second, but has nothing far from the border, so "none" there is checked on the next server.
+  Then `overpass-api.de`, then `overpass.private.coffee`. Any answer without places moves on to the next server,
+  except HTTP 400 (the query itself is wrong). No key; the requests carry the app's `User-Agent`.
 - Query: one `POST` (`data=` form field) per category picked: `nwr<tag filter>(south,west,north,east); out
   center 200;`, so ways and relations (a fuel station drawn as an area) come back as their centre. The box is
   the part of the map left visible by the panel and the buttons, cut to 25 km around its middle when the map is
