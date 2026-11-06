@@ -2,8 +2,8 @@ import Foundation
 
 /// A kind of point of interest in the map's places menu.
 ///
-/// `filter` is the Overpass QL tag filter that makes it in OpenStreetMap; `singular` names a place that has no
-/// name of its own there.
+/// `filter` is the Overpass QL tag filter that makes it in OpenStreetMap, `tags` the same as Photon's key:value
+/// pairs; `singular` names a place that has no name of its own there.
 public enum PlaceCategory: String, CaseIterable, Identifiable {
     case fuel
     case charging
@@ -44,6 +44,20 @@ public enum PlaceCategory: String, CaseIterable, Identifiable {
         case .supermarket: return "Supermarket"
         case .hotel: return "Hotel"
         case .pharmacy: return "Pharmacy"
+        }
+    }
+
+    public var tags: [String] {
+        switch self {
+        case .fuel: return ["amenity:fuel"]
+        case .charging: return ["amenity:charging_station"]
+        case .parking: return ["amenity:parking"]
+        case .restArea: return ["highway:services", "highway:rest_area"]
+        case .restaurant: return ["amenity:restaurant", "amenity:fast_food"]
+        case .cafe: return ["amenity:cafe"]
+        case .supermarket: return ["shop:supermarket"]
+        case .hotel: return ["tourism:hotel", "tourism:motel"]
+        case .pharmacy: return ["amenity:pharmacy"]
         }
     }
 

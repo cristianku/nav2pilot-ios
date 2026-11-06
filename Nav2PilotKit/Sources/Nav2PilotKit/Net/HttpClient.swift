@@ -7,6 +7,8 @@ public struct HttpRequest: CustomStringConvertible {
     public let body: String?
     public let followRedirects: Bool
     public let readBody: Bool
+    /// How long to wait for the server, instead of the client's own limit.
+    public let timeoutSeconds: TimeInterval?
 
     public init(
         method: String,
@@ -14,7 +16,8 @@ public struct HttpRequest: CustomStringConvertible {
         headers: [String: String] = [:],
         body: String? = nil,
         followRedirects: Bool = true,
-        readBody: Bool = true
+        readBody: Bool = true,
+        timeoutSeconds: TimeInterval? = nil
     ) {
         self.method = method
         self.url = url
@@ -22,6 +25,7 @@ public struct HttpRequest: CustomStringConvertible {
         self.body = body
         self.followRedirects = followRedirects
         self.readBody = readBody
+        self.timeoutSeconds = timeoutSeconds
     }
 
     // Headers are left out and an access_token query parameter is masked: both can carry a token.

@@ -41,7 +41,7 @@ public enum AppContainer {
         var routePlanning: RoutePlanning?
         var places: OverpassPlaces?
         if withRoutePlanning {
-            places = OverpassPlaces(http: httpClient)
+            places = OverpassPlaces(http: httpClient, reserve: PhotonPlaces(http: httpClient))
             routePlanning = RoutePlanning(
                 mapboxTokenStore: mapboxTokenStore,
                 verifier: MapboxTokenVerifier(http: httpClient),

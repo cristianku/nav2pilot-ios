@@ -27,7 +27,7 @@ private let frick = MapArea(south: 47.45, west: 7.95, north: 47.55, east: 8.10)
 final class OverpassPlacesTests: XCTestCase {
     func testQueryAsksTheCategoryInTheAreaWithCentres() {
         XCTAssertEqual(
-            #"[out:json][timeout:20];nwr["amenity"="fuel"](47.45000,7.95000,47.55000,8.10000);out center 200;"#,
+            #"[out:json][timeout:10];nwr["amenity"="fuel"](47.45000,7.95000,47.55000,8.10000);out center 200;"#,
             OverpassPlaces.query(.fuel, frick)
         )
         XCTAssertTrue(OverpassPlaces.query(.parking, frick).contains(#"["access"!~"^(private|no)$"]"#))

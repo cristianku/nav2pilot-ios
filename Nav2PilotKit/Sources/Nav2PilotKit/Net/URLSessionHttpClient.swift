@@ -24,6 +24,9 @@ public final class URLSessionHttpClient: HttpClient {
         }
         var urlRequest = URLRequest(url: url)
         urlRequest.httpMethod = request.method
+        if let timeout = request.timeoutSeconds {
+            urlRequest.timeoutInterval = timeout
+        }
         urlRequest.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         for (name, value) in request.headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)

@@ -279,8 +279,11 @@ Notes:
 
 - Source: OpenStreetMap through the public Overpass API. Around Switzerland `overpass.osm.ch` comes first: it
   answers in under a second, but has nothing far from the border, so "none" there is checked on the next server.
-  Then `overpass-api.de`, then `overpass.private.coffee`. Any answer without places moves on to the next server,
-  except HTTP 400 (the query itself is wrong). No key; the requests carry the app's `User-Agent`.
+  Then `overpass-api.de`, then `overpass.private.coffee`, 6 seconds each. Any answer without places moves on to
+  the next server, except HTTP 400 (the query itself is wrong). No key; the requests carry the app's `User-Agent`.
+- Reserve: when no Overpass server gives an answer, `photon.komoot.io/reverse` with the category's `osm_tag`
+  values, in the circle around the area. It answers in about a second worldwide, but has only named places (at
+  Frick 6 charging stations of 13, 38 car parks of 117) and cannot leave out private car parks.
 - Query: one `POST` (`data=` form field) per category picked: `nwr<tag filter>(south,west,north,east); out
   center 200;`, so ways and relations (a fuel station drawn as an area) come back as their centre. The box is
   the part of the map left visible by the panel and the buttons, cut to 25 km around its middle when the map is

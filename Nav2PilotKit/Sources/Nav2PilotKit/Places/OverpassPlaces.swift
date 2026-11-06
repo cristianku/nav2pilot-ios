@@ -26,6 +26,8 @@ public enum OverpassEndpoints {
 public final class OverpassPlaces {
     private let http: HttpClient
     private let endpoints: (MapArea) -> [String]
+    /// Asked when no Overpass server gave an answer.
+    private let reserve: PhotonPlaces?
 
     /// Places shown on the map at most; more would hide it.
     public static let maxPlaces = 50
@@ -33,9 +35,17 @@ public final class OverpassPlaces {
     // fetched to pick the maxPlaces nearest to the middle
     private static let maxFetched = 200
 
-    public init(http: HttpClient, endpoints: @escaping (MapArea) -> [String] = OverpassEndpoints.forArea) {
+    // a busy server takes half a minute or more: better the next one, and in the end the reserve
+    private static let serverTimeoutSeconds: TimeInterval = 6
+
+    public init(
+        http: HttpClient,
+        endpoints: @escaping (MapArea) -> [String] = OverpassEndpoints.forArea,
+        reserve: PhotonPlaces? = nil
+    ) {
         self.http = http
         self.endpoints = endpoints
+        self.reserve = reserve
     }
 
     public func search(_ category: PlaceCategory, in area: MapArea) async -> Result<[Place], TransportError> {
@@ -50,7 +60,8 @@ public final class OverpassPlaces {
                     "Content-Type": "application/x-www-form-urlencoded",
                     "Accept": "application/json",
                 ],
-                body: body
+                body: body,
+                timeoutSeconds: OverpassPlaces.serverTimeoutSeconds
             )
             let response: HttpResponse
             do {
@@ -90,6 +101,9 @@ public final class OverpassPlaces {
             }
             return .success(places)
         }
+        if let reserved = await reserve?.search(category, in: area), case .success(let places) = reserved, !places.isEmpty {
+            return reserved
+        }
         if noneInSwitzerland {
             return .success([])
         }
@@ -106,7 +120,7 @@ public final class OverpassPlaces {
             area.north,
             area.east
         )
-        return "[out:json][timeout:20];nwr" + category.filter + "(" + box + ");out center \(maxFetched);"
+        return "[out:json][timeout:10];nwr" + category.filter + "(" + box + ");out center \(maxFetched);"
     }
 
     static func parsePlaces(_ json: [String: Any], category: PlaceCategory, center: LatLng, limit: Int) -> [Place] {
