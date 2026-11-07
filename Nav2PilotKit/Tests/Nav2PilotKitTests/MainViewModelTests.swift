@@ -31,9 +31,12 @@ final class MainViewModelTests: XCTestCase {
             tokenStore: tokenStore,
             favoritesRepository: favoritesRepository,
             deviceRepository: deviceRepository,
+            typingPause: .milliseconds(1),
             now: { Date(timeIntervalSince1970: 1) }
         )
     }
+
+    private static let ikeaPratteln = Destination(latitude: 47.5302, longitude: 7.7012, name: "IKEA", details: "Grüssenweg 21, 4133 Pratteln")
 
     func testShareThenSendReportsConfirmation() async throws {
         try tokenStore.save(Fixtures.testJwt)
@@ -151,6 +154,75 @@ final class MainViewModelTests: XCTestCase {
 
         XCTAssertNil(viewModel.destination)
         XCTAssertFalse(viewModel.resolving)
+    }
+
+    func testTypingLooksUpOnlyTheLastText() async {
+        let search = FakePlaceSearch()
+        search.results["ikea"] = [MainViewModelTests.ikeaPratteln]
+        let viewModel = createViewModel(search: search)
+
+        viewModel.typeSearch("ik")
+        viewModel.typeSearch("ike")
+        await viewModel.typeSearch(" ikea ")?.value
+
+        XCTAssertEqual(["ikea"], search.queries)
+        XCTAssertEqual([MainViewModelTests.ikeaPratteln], viewModel.suggestions)
+        XCTAssertNil(viewModel.destination)
+    }
+
+    func testNoSuggestionsForOneLetterCoordinatesOrALink() async {
+        let search = FakePlaceSearch()
+        search.results["ikea"] = [MainViewModelTests.ikeaPratteln]
+        let viewModel = createViewModel(search: search)
+        await viewModel.typeSearch("ikea")?.value
+
+        XCTAssertNil(viewModel.typeSearch("i"))
+        XCTAssertEqual([], viewModel.suggestions)
+        XCTAssertNil(viewModel.typeSearch("47.5302, 7.7012"))
+        XCTAssertNil(viewModel.typeSearch("IKEA https://maps.app.goo.gl/gqhGPJxrF8E7MX479"))
+        XCTAssertNil(viewModel.typeSearch("  "))
+
+        XCTAssertEqual(["ikea"], search.queries)
+        XCTAssertEqual([], viewModel.suggestions)
+    }
+
+    func testChoosingASuggestionClearsThem() async {
+        let search = FakePlaceSearch()
+        search.results["ikea"] = [MainViewModelTests.ikeaPratteln]
+        let viewModel = createViewModel(search: search)
+        await viewModel.typeSearch("ikea")?.value
+
+        viewModel.chooseCandidate(viewModel.suggestions[0])
+
+        XCTAssertEqual(MainViewModelTests.ikeaPratteln, viewModel.destination)
+        XCTAssertEqual(DestinationResolver.sourceSearch, viewModel.destinationSource)
+        XCTAssertEqual([], viewModel.suggestions)
+    }
+
+    func testReturnDropsTheSuggestionsStillToCome() async {
+        let search = FakePlaceSearch()
+        search.results["ikea pratteln"] = [MainViewModelTests.ikeaPratteln]
+        let viewModel = createViewModel(search: search)
+
+        let pending = viewModel.typeSearch("ikea pratteln")
+        await viewModel.search("ikea pratteln")
+        await pending?.value
+
+        XCTAssertEqual(["ikea pratteln"], search.queries)
+        XCTAssertEqual(MainViewModelTests.ikeaPratteln, viewModel.destination)
+        XCTAssertEqual([], viewModel.suggestions)
+    }
+
+    func testAFailedLookupGivesNoSuggestionsAndNoError() async {
+        let search = FakePlaceSearch()
+        search.error = HttpClientError("The Internet connection appears to be offline.")
+        let viewModel = createViewModel(search: search)
+
+        await viewModel.typeSearch("ikea")?.value
+
+        XCTAssertEqual(["ikea"], search.queries)
+        XCTAssertEqual([], viewModel.suggestions)
+        XCTAssertEqual("", viewModel.resolveError)
     }
 }
 

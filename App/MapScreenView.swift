@@ -340,6 +340,10 @@ struct MapScreenView: View {
                         .onSubmit {
                             runSearch(query)
                         }
+                        // suggestions as the letters come; Return still runs the full search
+                        .onChange(of: query) { _, text in
+                            viewModel.typeSearch(text)
+                        }
                     if viewModel.resolving {
                         ProgressView()
                             .frame(width: 44, height: 44)
@@ -405,6 +409,16 @@ struct MapScreenView: View {
                         }
                     }
                     .frame(maxHeight: 320)
+                } else if !viewModel.resolving && !viewModel.suggestions.isEmpty && !query.isEmpty {
+                    Divider()
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(0..<viewModel.suggestions.count, id: \.self) { index in
+                                choiceRow(viewModel.suggestions[index])
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 320)
                 }
             }
             .frame(maxWidth: MapScreenView.searchMaxWidth)
@@ -424,13 +438,9 @@ struct MapScreenView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(choice.displayName())
                         .foregroundStyle(.primary)
-                    // the coordinates only when nothing else tells the places apart
-                    if !choice.details.isEmpty {
-                        Text(choice.details)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if choice.displayName() != choice.coordinatesText() {
-                        Text(choice.coordinatesText())
+                    let caption = choiceCaption(choice)
+                    if !caption.isEmpty {
+                        Text(caption)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -442,6 +452,22 @@ struct MapScreenView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// How far it is, when the phone's position is known, and where; the coordinates only when nothing else tells the
+    /// places apart.
+    private func choiceCaption(_ choice: Destination) -> String {
+        var parts: [String] = []
+        if let here = viewModel.origin {
+            let there = LatLng(latitude: choice.latitude, longitude: choice.longitude)
+            parts.append(RouteFormatting.distance(RouteShaping.distanceMeters(here, there)))
+        }
+        if !choice.details.isEmpty {
+            parts.append(choice.details)
+        } else if choice.displayName() != choice.coordinatesText() {
+            parts.append(choice.coordinatesText())
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func runSearch(_ text: String) {

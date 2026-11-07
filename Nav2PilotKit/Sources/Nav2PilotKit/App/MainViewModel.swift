@@ -42,6 +42,8 @@ public final class MainViewModel {
     public private(set) var resolving = false
     public private(set) var resolveError = ""
     public private(set) var choices: [Destination] = []
+    /// Places matching what is being typed, before Return is pressed.
+    public private(set) var suggestions: [Destination] = []
 
     // device commands
     public private(set) var connection = ConnectionState.unknown
@@ -110,6 +112,9 @@ public final class MainViewModel {
     private var connectionGeneration = 0
     private var routesGeneration = 0
     private var placesGeneration = 0
+    private var suggestionTask: Task<Void, Never>?
+    /// How long the typing has to stop before the suggestions are looked up.
+    private let typingPause: Duration
 
     public init(
         resolver: DestinationResolver,
@@ -121,6 +126,7 @@ public final class MainViewModel {
         routePlanning: RoutePlanning? = nil,
         mapboxTokenStore: TokenStore? = nil,
         places: OverpassPlaces? = nil,
+        typingPause: Duration = .milliseconds(300),
         now: @escaping () -> Date = { Date() }
     ) {
         self.resolver = resolver
@@ -131,6 +137,7 @@ public final class MainViewModel {
         self.favoritesRepository = favoritesRepository
         self.deviceRepository = deviceRepository
         self.now = now
+        self.typingPause = typingPause
         self.routePlanning = routePlanning
         self.placesSource = places
         let tokens: TokenStore?
@@ -183,10 +190,60 @@ public final class MainViewModel {
         }
     }
 
+    /// Suggestions for the text in the search field, looked up once the typing pauses. Names only: coordinates and
+    /// map links wait for Return. The returned task ends when the suggestions are in (tests await it).
+    @discardableResult
+    public func typeSearch(_ text: String) -> Task<Void, Never>? {
+        let query = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !geocoderAvailable || !MainViewModel.suggestsFor(query) {
+            clearSuggestions()
+            return nil
+        }
+        // the earlier suggestions stay until these replace them, so the list does not blink with every letter
+        suggestionTask?.cancel()
+        let task = Task {
+            do {
+                try await Task.sleep(for: typingPause)
+            } catch {
+                // more typing came first
+                return
+            }
+            let found: [Destination]
+            do {
+                found = try await placeSearch.search(query, maxResults: MainViewModel.maxSuggestions)
+            } catch {
+                // suggestions are a help: without them Return still searches and reports the error
+                found = []
+            }
+            if !Task.isCancelled {
+                suggestions = found
+            }
+        }
+        suggestionTask = task
+        return task
+    }
+
+    private static func suggestsFor(_ query: String) -> Bool {
+        if query.count < minSuggestionCharacters {
+            return false
+        }
+        if CoordinateParser.parse(query) != nil {
+            return false
+        }
+        return ShareTextParser.parse(query, subject: "").link.isEmpty
+    }
+
+    private func clearSuggestions() {
+        suggestionTask?.cancel()
+        suggestionTask = nil
+        suggestions = []
+    }
+
     public func chooseCandidate(_ candidate: Destination) {
         destination = candidate
         destinationSource = DestinationResolver.sourceSearch
         choices = []
+        clearSuggestions()
         resolveError = ""
         feedback = nil
         destinationChanged()
@@ -197,6 +254,7 @@ public final class MainViewModel {
         destination = favorite.destination
         destinationSource = DestinationResolver.sourceFavorite
         choices = []
+        clearSuggestions()
         resolving = false
         resolveError = ""
         feedback = nil
@@ -222,6 +280,7 @@ public final class MainViewModel {
         destination = Destination(latitude: latitude, longitude: longitude, name: "Dropped pin")
         destinationSource = DestinationResolver.sourceMap
         choices = []
+        clearSuggestions()
         resolving = false
         resolveError = ""
         feedback = nil
@@ -231,6 +290,7 @@ public final class MainViewModel {
     /// Closes the search results without choosing one.
     public func dismissChoices() {
         choices = []
+        clearSuggestions()
         resolveError = ""
     }
 
@@ -254,6 +314,7 @@ public final class MainViewModel {
         destination = nil
         destinationSource = ""
         choices = []
+        clearSuggestions()
         resolving = false
         resolveError = ""
         feedback = nil
@@ -296,6 +357,7 @@ public final class MainViewModel {
         resolving = true
         resolveError = ""
         choices = []
+        clearSuggestions()
 
         let outcome = await work()
         if generation != resolveGeneration {
@@ -312,6 +374,7 @@ public final class MainViewModel {
             destination = resolved
             destinationSource = source
             choices = []
+            clearSuggestions()
             resolveError = ""
             feedback = nil
             destinationChanged()
@@ -320,6 +383,7 @@ public final class MainViewModel {
             resolveError = ""
         case .failed(let reason):
             choices = []
+            clearSuggestions()
             resolveError = reason
         }
     }
@@ -768,6 +832,7 @@ public final class MainViewModel {
         destination = place.toDestination()
         destinationSource = DestinationResolver.sourcePlaces
         choices = []
+        clearSuggestions()
         resolving = false
         resolveError = ""
         feedback = nil
@@ -794,6 +859,10 @@ public final class MainViewModel {
 
     // places are looked up at most this far from the middle of the map: 50 x 50 km
     static let placesMaxHalfMeters = 25_000.0
+
+    // suggestions while typing: from the second character, a few rows under the search field
+    static let minSuggestionCharacters = 2
+    static let maxSuggestions = 6
 
     // sunnypilot setNavRoute accepts 20 waypoints; three are left for the via points of an alternative
     public static let maxStops = 10
