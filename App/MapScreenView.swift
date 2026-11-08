@@ -417,8 +417,10 @@ struct MapScreenView: View {
                     Divider()
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(0..<viewModel.choices.count, id: \.self) { index in
-                                choiceRow(viewModel.choices[index])
+                            // each row gets its place, not an index: the rows follow the opening hours too, and a row
+                            // redrawn for them after the list emptied would read past its end
+                            ForEach(Array(viewModel.choices.enumerated()), id: \.offset) { _, choice in
+                                choiceRow(choice)
                             }
                         }
                     }
@@ -427,8 +429,8 @@ struct MapScreenView: View {
                     Divider()
                     ScrollView {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(0..<viewModel.suggestions.count, id: \.self) { index in
-                                choiceRow(viewModel.suggestions[index])
+                            ForEach(Array(viewModel.suggestions.enumerated()), id: \.offset) { _, suggestion in
+                                choiceRow(suggestion)
                             }
                         }
                     }
