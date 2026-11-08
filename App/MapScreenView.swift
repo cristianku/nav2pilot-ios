@@ -222,14 +222,28 @@ struct MapScreenView: View {
         }
     }
 
-    /// The address, and the kind of place when the name does not say it already.
+    /// The address, then the kind of place when the name does not say it already and whether it is open now:
+    /// "Fast food · Open · Closes 23:00".
     private static func placeDescription(_ place: Place) -> String {
         var lines: [String] = []
         if !place.details.isEmpty {
             lines.append(place.details)
         }
-        if place.name != place.category.singular {
-            lines.append(place.category.singular)
+        var parts: [String] = []
+        // an unnamed place is already called by its category
+        var label = PlaceKinds.label(place.kind)
+        if label.isEmpty {
+            label = place.category.singular
+        }
+        if place.name != label && place.name != place.category.singular {
+            parts.append(label)
+        }
+        // an alert shows plain text: the open or closed without its colour
+        if let info = place.info, let hours = OpeningHours.parse(info.openingHours) {
+            parts.append(hours.statusText(at: Date()).text)
+        }
+        if !parts.isEmpty {
+            lines.append(parts.joined(separator: " · "))
         }
         return lines.joined(separator: "\n")
     }
@@ -427,14 +441,15 @@ struct MapScreenView: View {
         }
     }
 
+    /// A search result: its kind, where it is and how far, and whether it is open now when OpenStreetMap has its
+    /// opening hours.
     private func choiceRow(_ choice: Destination) -> some View {
-        Button {
+        let openingHours = viewModel.info(for: choice).openingHours
+        return Button {
             viewModel.chooseCandidate(choice)
         } label: {
             HStack(spacing: 14) {
-                Image(systemName: "mappin.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(Theme.brand)
+                KindIcon(kind: viewModel.kind(for: choice))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(choice.displayName())
                         .foregroundStyle(.primary)
@@ -443,6 +458,11 @@ struct MapScreenView: View {
                         Text(caption)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                    }
+                    if OpeningHours.parse(openingHours) != nil {
+                        KindAndStatusLine(label: "", openingHours: openingHours)
+                            .font(.caption)
+                            .lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
@@ -454,18 +474,22 @@ struct MapScreenView: View {
         .buttonStyle(.plain)
     }
 
-    /// How far it is, when the phone's position is known, and where; the coordinates only when nothing else tells the
-    /// places apart.
+    /// "Furniture store · Grüssenweg 21, 4133 Pratteln · 5 km": what it is, where, and how far when the phone's
+    /// position is known; the coordinates only when nothing else tells the places apart.
     private func choiceCaption(_ choice: Destination) -> String {
         var parts: [String] = []
-        if let here = viewModel.origin {
-            let there = LatLng(latitude: choice.latitude, longitude: choice.longitude)
-            parts.append(RouteFormatting.distance(RouteShaping.distanceMeters(here, there)))
+        let label = viewModel.kindLabel(for: choice)
+        if !label.isEmpty {
+            parts.append(label)
         }
         if !choice.details.isEmpty {
             parts.append(choice.details)
         } else if choice.displayName() != choice.coordinatesText() {
             parts.append(choice.coordinatesText())
+        }
+        if let here = viewModel.origin {
+            let there = LatLng(latitude: choice.latitude, longitude: choice.longitude)
+            parts.append(RouteFormatting.distance(RouteShaping.distanceMeters(here, there)))
         }
         return parts.joined(separator: " · ")
     }
@@ -659,6 +683,7 @@ private struct DestinationPanel: View {
                                 .foregroundStyle(.secondary)
                                 .lineLimit(2)
                         }
+                        kindAndStatus(destination)
                     }
                     Spacer(minLength: 8)
                     Button {
@@ -721,6 +746,10 @@ private struct DestinationPanel: View {
                 .font(.subheadline.weight(.medium))
 
                 if detailsVisible {
+                    let info = viewModel.info(for: destination)
+                    if !info.isEmpty() {
+                        PlaceInfoBlock(info: info)
+                    }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(destination.coordinatesText())
                             .font(.callout.monospaced())
@@ -734,6 +763,30 @@ private struct DestinationPanel: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+    }
+
+    /// "Furniture store · Open · Closes 20:00" under the address; a tap shows the week, the phone and the website.
+    @ViewBuilder
+    private func kindAndStatus(_ destination: Destination) -> some View {
+        let info = viewModel.info(for: destination)
+        let label = viewModel.kindLabel(for: destination)
+        if !label.isEmpty || OpeningHours.parse(info.openingHours) != nil {
+            let line = KindAndStatusLine(label: label, openingHours: info.openingHours)
+                .font(.subheadline)
+                .lineLimit(2)
+                .padding(.top, 2)
+            if info.isEmpty() {
+                line
+            } else {
+                Button {
+                    detailsVisible.toggle()
+                } label: {
+                    line
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(detailsVisible ? "Hides the details" : "Shows the details")
             }
         }
     }
@@ -960,5 +1013,144 @@ private struct MapButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Kind and opening hours
+
+/// The symbol of a place's kind: the places menu's own, a shop, a town, an address, or a plain pin.
+private struct KindIcon: View {
+    let kind: String
+
+    var body: some View {
+        Image(systemName: KindIcon.symbolName(kind))
+            .font(.title3)
+            .foregroundStyle(Theme.brand)
+            .frame(width: 28)
+    }
+
+    private static func symbolName(_ kind: String) -> String {
+        if let category = PlaceKinds.category(kind) {
+            return category.symbolName
+        }
+        if PlaceKinds.isShop(kind) {
+            return "bag.fill"
+        }
+        if PlaceKinds.isArea(kind) {
+            return "mappin.and.ellipse"
+        }
+        if PlaceKinds.isAddress(kind) {
+            return "house.fill"
+        }
+        return "mappin.circle.fill"
+    }
+}
+
+/// "Furniture store · Open · Closes 20:00": `label` first when there is one, the open or closed in its colour, again
+/// at each new minute. Hours the app cannot read give no status: they show as written in the details.
+private struct KindAndStatusLine: View {
+    let label: String
+    let openingHours: String
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            KindAndStatusLine.text(label, OpeningHours.parse(openingHours), context.date)
+        }
+    }
+
+    private static func text(_ label: String, _ hours: OpeningHours?, _ now: Date) -> Text {
+        var line = Text(label).foregroundStyle(Color.secondary)
+        guard let status = hours?.statusText(at: now) else {
+            return line
+        }
+        if !label.isEmpty {
+            line = joined(line, Text(" · ").foregroundStyle(Color.secondary))
+        }
+        let headline = Text(status.headline)
+            .foregroundStyle(toneColor(status.tone))
+            .fontWeight(.medium)
+        line = joined(line, headline)
+        if !status.rest.isEmpty {
+            line = joined(line, Text(" · " + status.rest).foregroundStyle(Color.secondary))
+        }
+        return line
+    }
+
+    /// One text after the other on the same line, each in its own colour.
+    private static func joined(_ first: Text, _ second: Text) -> Text {
+        return Text("\(first)\(second)")
+    }
+
+    private static func toneColor(_ tone: OpeningHours.StatusText.Tone) -> Color {
+        switch tone {
+        case .open:
+            return Theme.success
+        case .soon:
+            return Theme.warning
+        case .closed:
+            return Theme.error
+        }
+    }
+}
+
+/// The opening hours of the week (today in bold), the phone and the website, each when there is one.
+private struct PlaceInfoBlock: View {
+    let info: PlaceInfo
+    // the day names in a column, as wide as the longest at the user's text size
+    @ScaledMetric(relativeTo: .callout) private var dayColumnWidth: CGFloat = 104
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !info.openingHours.isEmpty {
+                Text("Opening hours")
+                    .font(.subheadline.weight(.semibold))
+                if let hours = OpeningHours.parse(info.openingHours) {
+                    TimelineView(.everyMinute) { context in
+                        week(hours, today: PlaceInfoBlock.dayIndex(context.date))
+                    }
+                } else {
+                    // more than the app reads (months, holidays by date): as mapped
+                    Text(info.openingHours)
+                        .font(.callout)
+                }
+            }
+            let phoneLink = PlaceInfo.phoneLink(info.phone)
+            if !phoneLink.isEmpty, let url = URL(string: phoneLink) {
+                Link(destination: url) {
+                    Label(info.phone, systemImage: "phone.fill")
+                }
+                .font(.callout)
+                .accessibilityLabel("Call " + info.phone)
+            }
+            if !info.website.isEmpty, let url = URL(string: info.website) {
+                Link(destination: url) {
+                    Label(PlaceInfo.shortWebAddress(info.website), systemImage: "globe")
+                        .lineLimit(1)
+                }
+                .font(.callout)
+                .accessibilityLabel("Website " + PlaceInfo.shortWebAddress(info.website))
+            }
+        }
+    }
+
+    private func week(_ hours: OpeningHours, today: Int) -> some View {
+        let rows = hours.weekRows()
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(0..<rows.count, id: \.self) { index in
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(rows[index].day)
+                        .frame(width: dayColumnWidth, alignment: .leading)
+                    Text(rows[index].hours)
+                }
+                .font(.callout.weight(index == today ? .semibold : .regular))
+            }
+        }
+    }
+
+    /// 0 for Monday to 6 for Sunday, as the rows of `weekRows`.
+    private static func dayIndex(_ date: Date) -> Int {
+        let weekday = Calendar.current.component(.weekday, from: date)
+        // the calendar counts from Sunday, 1
+        return (weekday + 5) % 7
     }
 }

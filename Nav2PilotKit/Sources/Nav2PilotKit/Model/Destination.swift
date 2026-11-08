@@ -13,8 +13,8 @@ public struct LatLng: Equatable {
 /// A navigation destination.
 ///
 /// Only `latitude` and `longitude` are sent to the device: athenad's setNavDestination accepts
-/// exactly these two parameters (see README "Verified API"). `name` and `details` are kept for display
-/// and favorites only.
+/// exactly these two parameters (see README "Verified API"). `name`, `details`, `kind`, `phone` and
+/// `website` are kept for display and favorites only.
 ///
 /// `approximate` is true when the coordinates are a map viewport centre rather than a place pin.
 public struct Destination: Equatable {
@@ -23,13 +23,32 @@ public struct Destination: Equatable {
     public var name: String
     public var details: String
     public var approximate: Bool
+    /// What the place is, as OpenStreetMap's main tag "shop:furniture" (Apple's categories are turned into the
+    /// same, see PlaceKinds); "" for an address or when unknown.
+    public var kind: String
+    /// The phone number Apple's map has for the place; "" when none.
+    public var phone: String
+    /// Its web page, an http or https address; "" when none.
+    public var website: String
 
-    public init(latitude: Double, longitude: Double, name: String = "", details: String = "", approximate: Bool = false) {
+    public init(
+        latitude: Double,
+        longitude: Double,
+        name: String = "",
+        details: String = "",
+        approximate: Bool = false,
+        kind: String = "",
+        phone: String = "",
+        website: String = ""
+    ) {
         self.latitude = latitude
         self.longitude = longitude
         self.name = name
         self.details = details
         self.approximate = approximate
+        self.kind = kind
+        self.phone = phone
+        self.website = website
     }
 
     public func coordinatesText() -> String {

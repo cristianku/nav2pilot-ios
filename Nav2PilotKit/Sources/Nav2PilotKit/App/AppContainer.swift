@@ -40,8 +40,11 @@ public enum AppContainer {
         let mapboxTokenStore = TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
         var routePlanning: RoutePlanning?
         var places: OverpassPlaces?
+        var placeInfoLookup: PlaceInfoLookup?
         if withRoutePlanning {
             places = OverpassPlaces(http: httpClient, reserve: PhotonPlaces(http: httpClient))
+            // opening hours of the search results, from the same servers
+            placeInfoLookup = PlaceInfoLookup(http: httpClient)
             routePlanning = RoutePlanning(
                 mapboxTokenStore: mapboxTokenStore,
                 verifier: MapboxTokenVerifier(http: httpClient),
@@ -61,7 +64,8 @@ public enum AppContainer {
             deviceRepository: DeviceRepository(store: dataStore),
             routePlanning: routePlanning,
             mapboxTokenStore: mapboxTokenStore,
-            places: places
+            places: places,
+            placeInfoLookup: placeInfoLookup
         )
     }
 

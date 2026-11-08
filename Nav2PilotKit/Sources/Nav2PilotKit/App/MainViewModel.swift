@@ -44,6 +44,9 @@ public final class MainViewModel {
     public private(set) var choices: [Destination] = []
     /// Places matching what is being typed, before Return is pressed.
     public private(set) var suggestions: [Destination] = []
+    /// Opening hours (and more) of the search results and the destination from OpenStreetMap, by
+    /// PlaceInfoLookup.key; empty for a place OpenStreetMap has nothing for. See `info(for:)`.
+    public private(set) var placeInfo: [String: PlaceInfo] = [:]
 
     // device commands
     public private(set) var connection = ConnectionState.unknown
@@ -107,12 +110,15 @@ public final class MainViewModel {
     /// The same sender as CarPlay's: the Mapbox token first, then the destination or the route.
     private let sender: DestinationSender
     private let placesSource: OverpassPlaces?
+    private let placeInfoLookup: PlaceInfoLookup?
 
     private var resolveGeneration = 0
     private var connectionGeneration = 0
     private var routesGeneration = 0
     private var placesGeneration = 0
     private var suggestionTask: Task<Void, Never>?
+    /// The last lookup of opening hours (tests await it).
+    private(set) var placeInfoTask: Task<Void, Never>?
     /// How long the typing has to stop before the suggestions are looked up.
     private let typingPause: Duration
 
@@ -126,6 +132,7 @@ public final class MainViewModel {
         routePlanning: RoutePlanning? = nil,
         mapboxTokenStore: TokenStore? = nil,
         places: OverpassPlaces? = nil,
+        placeInfoLookup: PlaceInfoLookup? = nil,
         typingPause: Duration = .milliseconds(300),
         now: @escaping () -> Date = { Date() }
     ) {
@@ -140,6 +147,7 @@ public final class MainViewModel {
         self.typingPause = typingPause
         self.routePlanning = routePlanning
         self.placesSource = places
+        self.placeInfoLookup = placeInfoLookup
         let tokens: TokenStore?
         if let store = mapboxTokenStore {
             tokens = store
@@ -364,7 +372,10 @@ public final class MainViewModel {
             // cancelled or replaced by a newer request
             return
         }
+        placeInfoTask = nil
         apply(outcome)
+        // the results are listed already; their opening hours follow
+        await placeInfoTask?.value
     }
 
     private func apply(_ outcome: ResolveOutcome) {
@@ -381,6 +392,7 @@ public final class MainViewModel {
         case .choices(_, let candidates):
             choices = candidates
             resolveError = ""
+            lookUpInfo(candidates)
         case .failed(let reason):
             choices = []
             clearSuggestions()
@@ -829,6 +841,10 @@ public final class MainViewModel {
     /// A place tapped on the map becomes the destination; the places stay, to compare or add one as a stop.
     public func choosePlace(_ place: Place) {
         resolveGeneration += 1
+        // what came with the place: no need to ask again
+        if let info = place.info {
+            placeInfo[PlaceInfoLookup.key(place.toDestination())] = info
+        }
         destination = place.toDestination()
         destinationSource = DestinationResolver.sourcePlaces
         choices = []
@@ -875,6 +891,66 @@ public final class MainViewModel {
         routes = []
         routesLoading = false
         routesMessage = ""
+        if let current = destination {
+            lookUpInfo([current])
+        }
+    }
+
+    // MARK: - opening hours
+
+    /// What the details show about `destination`: its opening hours from OpenStreetMap, its phone and web page
+    /// from Apple's map, or else from OpenStreetMap.
+    public func info(for destination: Destination) -> PlaceInfo {
+        var info = placeInfo[PlaceInfoLookup.key(destination)] ?? PlaceInfo()
+        if !destination.phone.isEmpty {
+            info.phone = destination.phone
+        }
+        if !destination.website.isEmpty {
+            info.website = destination.website
+        }
+        return info
+    }
+
+    /// What `destination` is, as a kind for PlaceKinds: OpenStreetMap's when it has one with a name, as it says
+    /// more than Apple ("shop:furniture" for Apple's "Shop"), else Apple's.
+    public func kind(for destination: Destination) -> String {
+        if let osmKind = placeInfo[PlaceInfoLookup.key(destination)]?.kind, !PlaceKinds.label(osmKind).isEmpty {
+            return osmKind
+        }
+        return destination.kind
+    }
+
+    /// "Furniture store"; "" when unknown, or when it is the name already ("Zürich", a city).
+    public func kindLabel(for destination: Destination) -> String {
+        let label = PlaceKinds.label(kind(for: destination))
+        if label.compare(destination.name, options: .caseInsensitive) == .orderedSame {
+            return ""
+        }
+        return label
+    }
+
+    /// Opening hours of `destinations` from OpenStreetMap, for those not known yet: once for a list of results,
+    /// once for a new destination, never while typing.
+    private func lookUpInfo(_ destinations: [Destination]) {
+        guard let lookup = placeInfoLookup else {
+            return
+        }
+        var missing: [Destination] = []
+        for destination in destinations {
+            if PlaceInfoLookup.wants(destination) && placeInfo[PlaceInfoLookup.key(destination)] == nil {
+                missing.append(destination)
+            }
+        }
+        if missing.isEmpty {
+            return
+        }
+        placeInfoTask = Task {
+            await lookup.lookup(missing) { found in
+                for (key, info) in found {
+                    self.placeInfo[key] = info
+                }
+            }
+        }
     }
 
     private func refreshTokenState() {

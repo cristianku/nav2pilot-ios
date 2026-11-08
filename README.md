@@ -45,6 +45,14 @@ favorites.
 The places come from OpenStreetMap, through a public Overpass server: free, no account, with or without a
 Mapbox token. They are on the iPhone only: CarPlay's driving task apps may not be place finders.
 
+## Search results
+
+Under each result of a search: what the place is, where and how far ("Furniture store · Grüssenweg 21, 4133
+Pratteln · 5 km") and, when OpenStreetMap has its opening hours, whether it is open now: "Open · Closes 20:00"
+in green, "Closes soon" or "Opens soon" in orange within the hour, "Closed · Opens tomorrow 10:00" in red. The
+destination shows the same line; a tap on it, or **Details**, shows the week's hours (today in bold), the phone
+number to call and the website. The places of the points-of-interest menu say the same.
+
 ## What you need on the car
 
 - openpilot or sunnypilot with **Nav Alpha**, the navigation comma added to openpilot in October 2026. Older
@@ -178,9 +186,11 @@ On Android, Nav2Pilot also has an Android Auto screen and runs on CarlinKit boxe
   iPhone locked.
 - The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links and to
   search), to OpenStreetMap's Overpass servers (when you ask for points of interest: the category and the part
-  of the map you see) and, if you set it up, to Mapbox. No analytics, no tracking.
+  of the map you see; after a search, the names and coordinates of the places found, for their opening hours)
+  and, if you set it up, to Mapbox. No analytics, no tracking.
 - Your position is used for the route preview, which only Mapbox gets, and as the area Apple's search looks
-  in first.
+  in first. Overpass never gets your position or what you typed; the places found are usually near you, though,
+  so it can tell roughly where you searched.
 
 Nav2Pilot is an independent project, not affiliated with comma.ai or sunnypilot.
 
@@ -204,6 +214,9 @@ tests. It only talks to documented network APIs, independently of the openpilot 
   known position first).
 - **Points of interest**: nine categories from OpenStreetMap (Overpass API) in the part of the map in view; a
   place becomes the destination or a stop (see "Points of interest").
+- **Search results with details**: the kind of place, the distance and whether it is open now ("Open · Closes
+  20:00"); the chosen destination shows the week's opening hours, the phone number and the website (see
+  "Opening hours").
 - **Mapbox (optional)**: your own Mapbox token is sent to the device, which then asks Mapbox for its routes
   instead of comma's route service (see "Mapbox token on the device"). The Send tab shows the fastest route and
   up to two alternatives from the phone's position, stops added with a long press. The device follows the
@@ -297,6 +310,34 @@ Notes:
   (`setNavRoute` waypoint with `via: false`).
 - Not in CarPlay: the driving task category does not allow location finders.
 
+### Opening hours
+
+- Apple's results (`MKMapItem`) give the kind (`pointOfInterestCategory`, turned into OpenStreetMap's main
+  tag: `.restaurant` → `amenity:restaurant`, `.store` → `shop:yes`), the phone number and the website (http and
+  https only). The labels ("shop:furniture" → "Furniture store") are the Android app's
+  (`Places/PlaceKinds.swift`).
+- Apple's results carry no OpenStreetMap id, so after Return the points of interest of the list (not the
+  addresses and towns) go to Overpass in one `POST`, each by its name around its own coordinates:
+  `[out:json][timeout:5];(nwr(around:200,47.5302,7.7012)["opening_hours"]["name"~"^(IKEA)$",i];…);out tags
+  center;`. That is all the request holds: the names Apple gives the places found (a longer name as its first
+  words, "IKEA" and "IKEA Pratteln" for "IKEA Pratteln") and their coordinates rounded to 4 decimals (about
+  10 m). Not the phone's position, not the typed text.
+- Each OpenStreetMap place found goes to the nearest result with the same name, upper or lower case alike (or
+  that name followed by its `branch` or town), within 600 m. The chosen destination is asked the same way; the
+  suggestions while typing ask nothing. Places from the points-of-interest menu already have their tags: no
+  request.
+- Same servers and order as the points of interest, 6 seconds each; an answer with a `remark` (the server ran
+  out of time) counts as no answer. What was answered is kept for the session (the last 200 places); a lookup
+  no server answered is tried again next time.
+- From the tags: `opening_hours`, `phone` / `contact:phone` (the first number), `website` / `contact:website`
+  / `url` (only http and https). Apple's phone and website come first; OpenStreetMap's kind replaces Apple's
+  when it says more ("Furniture store" for Apple's "store").
+- `opening_hours` is read for the common forms (`Places/OpeningHours.swift`, the same reader and tests as the
+  Android app): days and day ranges (`Mo-Fr`, `Sa,Su`, `Fr-Mo`), several times a day (`08:00-12:00,13:30-18:00`),
+  past midnight (`18:00-02:00`), `24/7`, `off`, later rules replacing earlier ones on their days; public and
+  school holidays are left out. Anything else (months, weeks, `sunrise`, comments) is shown as written, without
+  the open or closed status.
+
 ### Route map and waypoints
 
 The map uses the user's **own free Mapbox account**: Devices → Mapbox → Set up Mapbox opens Mapbox's
@@ -388,7 +429,8 @@ Nav2PilotKit/                  Swift package: everything except the UI, tested w
     Parsing/                   URL splitting, coordinates, Google / Apple Maps / geo: links, shared text
     Resolve/                   short-link expansion, link -> search fallback
     Geocode/                   PlaceSearch (MapKit local search)
-    Places/                    points of interest from OpenStreetMap (Overpass API)
+    Places/                    points of interest from OpenStreetMap (Overpass API); opening hours (OpeningHours,
+                               PlaceInfo) and kinds of place (PlaceKinds)
     Mapbox/                    user's Mapbox token check, Directions previews, via points, phone location
     Net/                       HttpClient abstraction (ephemeral URLSession, redirects one hop at a time)
     Transport/                 NavigationTransport + comma athena backend + sunnylink stub, DestinationSender
@@ -427,9 +469,10 @@ extension finds no stored devices but has the token, it lists them from the comm
 - Network traffic goes through an ephemeral URLSession (no cache, no cookies). Hosts contacted:
   `api.commadotai.com`, `athena.comma.ai`, Google Maps and Apple Maps hosts (only to expand shared short
   links), Apple's MapKit service (address search), the Overpass API servers (points of interest, only when a
-  category is picked) and, only with a Mapbox token, `api.mapbox.com` (token check, routes; the map SDK loads its
-  tiles from Mapbox). No analytics. The phone's position goes to Mapbox for the route preview and, as the search
-  region, to Apple's MapKit search; Overpass only gets the part of the map in view.
+  category is picked; opening hours of search results, by their names and coordinates only) and, only with a
+  Mapbox token, `api.mapbox.com` (token check, routes; the map SDK loads its tiles from Mapbox). No analytics.
+  The phone's position goes to Mapbox for the route preview and, as the search region, to Apple's MapKit
+  search; Overpass only gets the part of the map in view, or the names and coordinates of the places found.
 - The paste buttons use SwiftUI's `PasteButton`, so the clipboard is read only when you tap them.
 
 ### Build
@@ -507,8 +550,9 @@ If an identifier's App Group changes after its profile was created, the profile 
 
 - `swift test --package-path Nav2PilotKit`: link parsing (including a real `maps.app.goo.gl` redirect
   and EU consent hop captured on 2026-10-17, and Apple Maps links), short-link expansion, resolver
-  fallbacks, the exact athena JSON-RPC requests and response handling, token storage, repositories and
-  the view model flow. No network access, runs on macOS without a simulator.
+  fallbacks, the exact athena JSON-RPC requests and response handling, token storage, repositories,
+  opening hours and their Overpass lookups, and the view model flow. No network access, runs on macOS
+  without a simulator.
 - `NAV2PILOT_NETWORK_TESTS=1 swift test --package-path Nav2PilotKit --filter NetworkIntegrationTests`:
   the real Google short link, Apple's redirect of a legacy link and a MapKit search. No comma token used.
 - `xcodebuild test -project Nav2Pilot.xcodeproj -scheme Nav2Pilot -destination 'platform=iOS Simulator,name=iPhone 17'`:

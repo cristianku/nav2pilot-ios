@@ -34,6 +34,45 @@ final class RepositoriesTests: XCTestCase {
         XCTAssertTrue(FavoritesRepository(store: storage).favorites.isEmpty)
     }
 
+    func testFavoritesOfOlderVersionsStillLoad() {
+        // stored before places had a kind, a phone and a web page
+        storage.values[FavoritesRepository.keyFavorites] =
+            #"[{"id":"f1","destination":{"latitude":47.5302,"longitude":7.7012,"name":"IKEA","details":"Grüssenweg 21, 4133 Pratteln","approximate":false}}]"#
+
+        let favorites = FavoritesRepository(store: storage).favorites
+
+        let ikea = Destination(latitude: 47.5302, longitude: 7.7012, name: "IKEA", details: "Grüssenweg 21, 4133 Pratteln")
+        XCTAssertEqual([Favorite(id: "f1", destination: ikea)], favorites)
+        XCTAssertEqual("", favorites[0].destination.kind)
+        XCTAssertEqual("", favorites[0].destination.phone)
+        XCTAssertEqual("", favorites[0].destination.website)
+    }
+
+    func testAFavoriteKeepsWhatThePlaceIs() {
+        let repository = FavoritesRepository(store: storage)
+        let ikea = Destination(
+            latitude: 47.5302,
+            longitude: 7.7012,
+            name: "IKEA",
+            details: "Grüssenweg 21, 4133 Pratteln",
+            kind: "shop:yes",
+            phone: "+41 848 801 100",
+            website: "https://www.ikea.com/ch/de/stores/pratteln/"
+        )
+        let favorite = repository.add(ikea)
+
+        XCTAssertEqual([favorite], FavoritesRepository(store: storage).favorites)
+        // without them, the same as older versions stored
+        repository.remove(favorite.id)
+        repository.add(Destination(latitude: 45.4642, longitude: 9.19, name: "Home"))
+        XCTAssertFalse(storage.values[FavoritesRepository.keyFavorites]?.contains("kind") ?? true)
+
+        // only a web page opens from the details
+        storage.values[FavoritesRepository.keyFavorites] =
+            #"[{"id":"f2","destination":{"latitude":47.5,"longitude":7.7,"name":"Bar","website":"javascript:alert(1)"}}]"#
+        XCTAssertEqual("", FavoritesRepository(store: storage).favorites.first?.destination.website)
+    }
+
     func testAccountRefreshKeepsManualDevices() {
         let repository = DeviceRepository(store: storage)
         let manual = PairedDevice(dongleId: "aaaaaaaaaaaaaaaa", alias: "Borrowed", addedManually: true)

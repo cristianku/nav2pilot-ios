@@ -190,6 +190,52 @@ final class OverpassPlacesTests: XCTestCase {
     }
 }
 
+final class MapKitPlaceSearchTests: XCTestCase {
+    private func item(_ category: MKPointOfInterestCategory?, url: String?) -> MKMapItem {
+        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: 47.5302, longitude: 7.7012)))
+        item.name = "IKEA"
+        item.phoneNumber = " +41 848 801 100 "
+        if let address = url {
+            item.url = URL(string: address)
+        }
+        item.pointOfInterestCategory = category
+        return item
+    }
+
+    func testApplesCategoriesAreOpenStreetMapKinds() {
+        XCTAssertEqual("amenity:fuel", MapKitPlaceSearch.kind(.gasStation))
+        XCTAssertEqual("shop:supermarket", MapKitPlaceSearch.kind(.foodMarket))
+        XCTAssertEqual("", MapKitPlaceSearch.kind(nil))
+        // the same labels and symbols as OpenStreetMap's places
+        XCTAssertEqual("Shop", PlaceKinds.label(MapKitPlaceSearch.kind(.store)))
+        XCTAssertEqual("Fuel station", PlaceKinds.label(MapKitPlaceSearch.kind(.gasStation)))
+        XCTAssertEqual(.restaurant, PlaceKinds.category(MapKitPlaceSearch.kind(.restaurant)))
+        XCTAssertEqual(.charging, PlaceKinds.category(MapKitPlaceSearch.kind(.evCharger)))
+        let named: [MKPointOfInterestCategory] = [.airport, .bakery, .cafe, .hotel, .museum, .parking, .pharmacy, .theater, .zoo]
+        for category in named {
+            XCTAssertFalse(PlaceKinds.label(MapKitPlaceSearch.kind(category)).isEmpty, category.rawValue)
+        }
+    }
+
+    func testAMapItemBringsItsKindPhoneAndWebPage() {
+        let destination = MapKitPlaceSearch.toDestination(item(.store, url: "https://www.ikea.com/ch/de/stores/pratteln/"))
+
+        XCTAssertEqual("IKEA", destination.name)
+        XCTAssertEqual(47.5302, destination.latitude, accuracy: 1e-9)
+        XCTAssertEqual("shop:yes", destination.kind)
+        XCTAssertEqual("+41 848 801 100", destination.phone)
+        XCTAssertEqual("https://www.ikea.com/ch/de/stores/pratteln/", destination.website)
+        XCTAssertTrue(PlaceInfoLookup.wants(destination))
+
+        // only a web page opens from the details
+        XCTAssertEqual("", MapKitPlaceSearch.toDestination(item(.store, url: "tel:+41848801100")).website)
+        let address = MapKitPlaceSearch.toDestination(item(nil, url: nil))
+        XCTAssertEqual("", address.kind)
+        XCTAssertEqual("", address.website)
+        XCTAssertFalse(PlaceInfoLookup.wants(address))
+    }
+}
+
 @MainActor
 final class PlacesViewModelTests: XCTestCase {
     private var http = FakeHttpClient()

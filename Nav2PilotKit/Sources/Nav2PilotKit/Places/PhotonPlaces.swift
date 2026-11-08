@@ -79,8 +79,15 @@ public final class PhotonPlaces {
             if name.isEmpty {
                 name = category.singular
             }
+            // Photon's own key and value are the place's main tag; the category's first without them
+            var kind = category.tags.first ?? ""
+            let key = text(properties, "osm_key")
+            let value = text(properties, "osm_value")
+            if !key.isEmpty && !value.isEmpty {
+                kind = key + ":" + value
+            }
             found.append(
-                Place(category: category, latitude: latitude, longitude: longitude, name: name, details: address(properties))
+                Place(category: category, latitude: latitude, longitude: longitude, name: name, details: address(properties), kind: kind)
             )
         }
         let center = area.center()

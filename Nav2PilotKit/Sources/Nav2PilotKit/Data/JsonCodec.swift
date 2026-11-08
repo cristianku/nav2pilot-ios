@@ -13,13 +13,24 @@ public struct Favorite: Equatable, Identifiable {
 /// JSON encoding of locally stored, non-secret data (same format as the Android app).
 public enum JsonCodec {
     static func destinationToJson(_ destination: Destination) -> [String: Any] {
-        return [
+        var json: [String: Any] = [
             "latitude": destination.latitude,
             "longitude": destination.longitude,
             "name": destination.name,
             "details": destination.details,
             "approximate": destination.approximate,
         ]
+        // older versions have none of these: they read as ""
+        if !destination.kind.isEmpty {
+            json["kind"] = destination.kind
+        }
+        if !destination.phone.isEmpty {
+            json["phone"] = destination.phone
+        }
+        if !destination.website.isEmpty {
+            json["website"] = destination.website
+        }
+        return json
     }
 
     static func destinationFromJson(_ json: [String: Any]) -> Destination? {
@@ -37,7 +48,11 @@ public enum JsonCodec {
             longitude: longitude,
             name: Json.string(json, "name"),
             details: Json.string(json, "details"),
-            approximate: Json.bool(json, "approximate", defaultValue: false)
+            approximate: Json.bool(json, "approximate", defaultValue: false),
+            kind: Json.string(json, "kind"),
+            phone: Json.string(json, "phone"),
+            // only a web page opens from the details
+            website: PlaceInfo.webAddress(Json.string(json, "website"))
         )
     }
 

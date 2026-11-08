@@ -13,9 +13,15 @@ public enum OverpassEndpoints {
 
     /// The servers for `area`: the Swiss one first when its middle is around Switzerland.
     public static func forArea(_ area: MapArea) -> [String] {
-        let center = area.center()
-        if (45.8...47.9).contains(center.latitude) && (5.9...10.5).contains(center.longitude) {
-            return [switzerland] + interpreters
+        return forPoints([area.center()])
+    }
+
+    /// The servers for places at `points`: the Swiss one first when one of them is around Switzerland.
+    public static func forPoints(_ points: [LatLng]) -> [String] {
+        for point in points {
+            if (45.8...47.9).contains(point.latitude) && (5.9...10.5).contains(point.longitude) {
+                return [switzerland] + interpreters
+            }
         }
         return interpreters
     }
@@ -145,7 +151,16 @@ public final class OverpassPlaces {
             }
             let tags = element["tags"] as? [String: Any] ?? [:]
             found.append(
-                Place(category: category, latitude: latitude, longitude: longitude, name: placeName(tags, category), details: address(tags))
+                Place(
+                    category: category,
+                    latitude: latitude,
+                    longitude: longitude,
+                    name: placeName(tags, category),
+                    details: address(tags),
+                    kind: PlaceKinds.fromTags(tags, category: category),
+                    // the opening hours come with the place: the dialog shows them without asking again
+                    info: PlaceInfo.fromTags(tags)
+                )
             )
         }
         let nearest = found.sorted { first, second in

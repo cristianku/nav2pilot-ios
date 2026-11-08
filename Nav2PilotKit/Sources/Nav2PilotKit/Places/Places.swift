@@ -86,17 +86,31 @@ public struct Place: Equatable {
     public let name: String
     /// The address, "" when OpenStreetMap has none.
     public let details: String
+    /// Its main tag, "amenity:fast_food" (see Destination.kind); "" when unknown.
+    public let kind: String
+    /// Its opening hours, phone and website, as they came with it from Overpass; nil from Photon, which has none.
+    public let info: PlaceInfo?
 
-    public init(category: PlaceCategory, latitude: Double, longitude: Double, name: String, details: String) {
+    public init(
+        category: PlaceCategory,
+        latitude: Double,
+        longitude: Double,
+        name: String,
+        details: String,
+        kind: String = "",
+        info: PlaceInfo? = nil
+    ) {
         self.category = category
         self.latitude = latitude
         self.longitude = longitude
         self.name = name
         self.details = details
+        self.kind = kind
+        self.info = info
     }
 
     public func toDestination() -> Destination {
-        return Destination(latitude: latitude, longitude: longitude, name: name, details: details)
+        return Destination(latitude: latitude, longitude: longitude, name: name, details: details, kind: kind)
     }
 }
 
