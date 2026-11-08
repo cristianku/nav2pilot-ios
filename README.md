@@ -161,7 +161,8 @@ the send button on the left, the route map on the right.
 Nav2Pilot has a CarPlay screen, waiting for Apple: a CarPlay app needs a CarPlay entitlement that Apple grants
 on request, and TestFlight builds get CarPlay once Apple has granted it. On the screen:
 
-- **Destinations**: your favorites on the map, nearest first. Tap one and **Send to** your car.
+- **Destinations**: your favorites on the map, nearest first; shops, restaurants and the like say whether they
+  are open ("Open · Closes 20:00"). Tap one and **Send to** your car.
 - **Car**: your cars with their status (online, software version). Pick the one to send to, or clear its
   destination.
 
@@ -186,8 +187,9 @@ On Android, Nav2Pilot also has an Android Auto screen and runs on CarlinKit boxe
   iPhone locked.
 - The app only talks to comma (to reach your device), to Google and Apple Maps (to open shared links and to
   search), to OpenStreetMap's Overpass servers (when you ask for points of interest: the category and the part
-  of the map you see; after a search, the names and coordinates of the places found, for their opening hours)
-  and, if you set it up, to Mapbox. No analytics, no tracking.
+  of the map you see; after a search, the names and coordinates of the places found, for their opening hours;
+  in CarPlay also those of the favorites that are shops and the like, never of an address) and, if you set it
+  up, to Mapbox. No analytics, no tracking.
 - Your position is used for the route preview, which only Mapbox gets, and as the area Apple's search looks
   in first. Overpass never gets your position or what you typed; the places found are usually near you, though,
   so it can tell roughly where you searched.
@@ -326,6 +328,9 @@ Notes:
   that name followed by its `branch` or town), within 600 m. The chosen destination is asked the same way; the
   suggestions while typing ask nothing. Places from the points-of-interest menu already have their tags: no
   request.
+- CarPlay asks the same way for the favorites on its map that are points of interest (a kind of their own,
+  not an address, a building or a town). The app and CarPlay share one lookup, so what one found the other
+  does not ask again.
 - Same servers and order as the points of interest, 6 seconds each; an answer with a `remark` (the server ran
   out of time) counts as no answer. What was answered is kept for the session (the last 200 places); a lookup
   no server answered is tried again next time.
@@ -407,6 +412,9 @@ Investigated, **not implemented** (the `SunnylinkTransport` backend is an explic
 - Root: a tab bar. **Destinations** is a point of interest template (Apple's MapKit map, up to 12 places)
   whose cards send the favorite; **Car** is a list of the cars with their status, plus clearing the
   destination. Nothing is pushed, alerts show the result.
+- Open or closed: the point's `summary` in the list and the first line of its card's `detailSummary`, plain
+  text (CarPlay takes no colours there). The screen looks again at each new minute and sends the places to
+  CarPlay only when a status changes.
 - `CarPlaySceneDelegate` in `App/` is the scene of the `CPTemplateApplicationSceneSessionRoleApplication` role
   in the scene manifest (`UIApplicationSupportsMultipleScenes` true: the iPhone window and CarPlay are two
   scenes at once; SwiftUI keeps the window's own configuration).

@@ -14,18 +14,24 @@ public final class CarScreenModel {
     private let favoritesRepository: FavoritesRepository
     private let transports: TransportRegistry
     private let sender: DestinationSender
+    private let placeInfoLookup: PlaceInfoLookup?
+
+    /// The opening hours of the favorites, by `PlaceInfoLookup.key`.
+    public private(set) var placeInfo: [String: PlaceInfo] = [:]
 
     public init(
         tokenStore: TokenStore,
         deviceRepository: DeviceRepository,
         favoritesRepository: FavoritesRepository,
         transports: TransportRegistry,
-        mapboxTokenStore: TokenStore?
+        mapboxTokenStore: TokenStore?,
+        placeInfoLookup: PlaceInfoLookup? = nil
     ) {
         self.tokenStore = tokenStore
         self.deviceRepository = deviceRepository
         self.favoritesRepository = favoritesRepository
         self.transports = transports
+        self.placeInfoLookup = placeInfoLookup
         self.sender = DestinationSender(transports: transports, mapboxToken: {
             return mapboxTokenStore?.load()
         })
@@ -101,6 +107,40 @@ public final class CarScreenModel {
         case .failure(let error):
             return "Not reachable: " + TransportErrorText.describe(error)
         }
+    }
+
+    /// Looks up the opening hours of those `favorites` that are places, not addresses or towns, and are not known
+    /// yet: their names and coordinates go to OpenStreetMap, as for the app's search results. True when some came.
+    public func lookUpInfo(_ favorites: [Favorite]) async -> Bool {
+        guard let lookup = placeInfoLookup else {
+            return false
+        }
+        var missing: [Destination] = []
+        for favorite in favorites {
+            let destination = favorite.destination
+            if PlaceInfoLookup.wants(destination) && placeInfo[PlaceInfoLookup.key(destination)] == nil {
+                missing.append(destination)
+            }
+        }
+        if missing.isEmpty {
+            return false
+        }
+        let found = await lookup.lookup(missing)
+        if found.isEmpty {
+            return false
+        }
+        placeInfo.merge(found) { _, new in
+            return new
+        }
+        return true
+    }
+
+    /// "Open · Closes 20:00" at `date`, or nil for a favorite without opening hours the app can read.
+    public func openStatus(of favorite: Favorite, at date: Date, calendar: Calendar = .current, locale: Locale = .current) -> String? {
+        guard let info = placeInfo[PlaceInfoLookup.key(favorite.destination)], let hours = OpeningHours.parse(info.openingHours) else {
+            return nil
+        }
+        return hours.statusText(at: date, calendar: calendar, locale: locale).text
     }
 
     /// The nearest favorites first when the position is known, otherwise in the order they were added.

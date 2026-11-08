@@ -31,7 +31,8 @@ final class CarScreenModelTests: XCTestCase {
             deviceRepository: deviceRepository,
             favoritesRepository: favoritesRepository,
             transports: TransportRegistry(comma: comma, sunnylink: SunnylinkTransport()),
-            mapboxTokenStore: mapboxTokenStore
+            mapboxTokenStore: mapboxTokenStore,
+            placeInfoLookup: PlaceInfoLookup(http: http, endpoints: { _ in ["https://overpass.example/api/interpreter"] })
         )
     }
 
@@ -58,6 +59,43 @@ final class CarScreenModelTests: XCTestCase {
         XCTAssertEqual(["verona", "milano"], CarScreenModel.nearestFirst([verona, milano], from: nil, limit: 12).map { $0.id })
         XCTAssertEqual(["milano"], CarScreenModel.nearestFirst([verona, milano], from: here, limit: 1).map { $0.id })
         XCTAssertEqual(1012, CarScreenModel.distanceMeters(milano, from: here), accuracy: 5)
+    }
+
+    func testFavoritePlacesSayWhetherTheyAreOpen() async throws {
+        let ikea = Favorite(
+            id: "ikea",
+            destination: Destination(latitude: 47.5302, longitude: 7.7012, name: "IKEA", details: "Pratteln", kind: "shop:yes")
+        )
+        let home = Favorite(
+            id: "home",
+            destination: Destination(latitude: 47.5076, longitude: 8.0148, name: "Home", details: "Hauptstrasse 1, Frick")
+        )
+        http.respond(200, #"{"elements": [{"type": "way", "id": 26343678, "center": {"lat": 47.5300, "lon": 7.7010}, "tags": {"name": "IKEA", "opening_hours": "Mo-Sa 10:00-20:00"}}]}"#)
+        let model = createModel()
+
+        let arrived = await model.lookUpInfo([ikea, home])
+
+        XCTAssertTrue(arrived)
+        // only the store goes to OpenStreetMap, never the address
+        XCTAssertEqual(1, http.requests.count)
+        let query = (http.requests[0].body ?? "").removingPercentEncoding ?? ""
+        XCTAssertTrue(query.contains("IKEA"), query)
+        XCTAssertFalse(query.contains("Home"), query)
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Zurich")!
+        // Monday 9 November 2026
+        let morning = calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12))!
+        let evening = calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 21))!
+        let swiss = Locale(identifier: "de_CH")
+        XCTAssertEqual("Open · Closes 20:00", model.openStatus(of: ikea, at: morning, calendar: calendar, locale: swiss))
+        XCTAssertEqual("Closed · Opens tomorrow 10:00", model.openStatus(of: ikea, at: evening, calendar: calendar, locale: swiss))
+        XCTAssertNil(model.openStatus(of: home, at: morning, calendar: calendar, locale: swiss))
+
+        // known now: the next time the map is drawn asks nothing
+        let again = await model.lookUpInfo([ikea, home])
+        XCTAssertFalse(again)
+        XCTAssertEqual(1, http.requests.count)
     }
 
     func testSendGoesWithTheMapboxTokenFirst() async throws {

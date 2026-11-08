@@ -6,8 +6,9 @@ import UIKit
 
 /// The CarPlay screen, a "driving task" app: CarPlay draws Apple's templates, the app only fills them.
 ///
-/// - Destinations: the favorites on Apple Maps (point of interest template), nearest first. A place's card
-///   sends it to the selected car. CarPlay gives driving task apps no map of their own and no search.
+/// - Destinations: the favorites on Apple Maps (point of interest template), nearest first, the shops and the
+///   like open or closed. A place's card sends it to the selected car. CarPlay gives driving task apps no map of
+///   their own and no search.
 /// - Car: the cars with their status, the one to send to, clearing its destination.
 ///
 /// Setup stays on the iPhone; without it the screen only says what is missing. The templates are updated in
@@ -19,6 +20,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
     private var position: LatLng?
     private var statuses: [String: String] = [:]
     private var defaultsObserver: NSObjectProtocol?
+    /// Redraws at each new minute: a place closes, or soon will.
+    private var clock: Task<Void, Never>?
 
     private var setupTemplate: CPListTemplate?
     private var tabBar: CPTabBarTemplate?
@@ -50,6 +53,13 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             await refreshPosition()
             await refreshStatuses()
         }
+        clock = Task { [weak self] in
+            while !Task.isCancelled {
+                let seconds = 60 - Calendar.current.component(.second, from: Date())
+                try? await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+                self?.refresh()
+            }
+        }
     }
 
     func templateApplicationScene(
@@ -60,6 +70,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             NotificationCenter.default.removeObserver(observer)
         }
         defaultsObserver = nil
+        clock?.cancel()
+        clock = nil
         self.interfaceController = nil
         model = nil
         setupTemplate = nil
@@ -144,8 +156,12 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             carName = device.displayName()
             key = device.dongleId
         }
+        let now = Date()
+        var openStatuses: [String?] = []
         for favorite in places {
-            key += "|" + favorite.id
+            let status = model.openStatus(of: favorite, at: now)
+            openStatuses.append(status)
+            key += "|" + favorite.id + "=" + (status ?? "")
         }
         if let here = position {
             key += String(format: "|%.3f,%.3f", here.latitude, here.longitude)
@@ -154,10 +170,11 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
             return shown
         }
         placesKey = key
+        lookUpInfo(places)
 
         var points: [CPPointOfInterest] = []
-        for favorite in places {
-            points.append(point(favorite, carName: carName))
+        for (index, favorite) in places.enumerated() {
+            points.append(point(favorite, status: openStatuses[index], carName: carName))
         }
         if let shown = placesTemplate {
             shown.setPointsOfInterest(points, selectedIndex: NSNotFound)
@@ -171,7 +188,8 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         return template
     }
 
-    private func point(_ favorite: Favorite, carName: String) -> CPPointOfInterest {
+    /// `status`, "Open · Closes 20:00", under the address in the list and on the card.
+    private func point(_ favorite: Favorite, status: String?, carName: String) -> CPPointOfInterest {
         let destination = favorite.destination
         let coordinate = CLLocationCoordinate2D(latitude: destination.latitude, longitude: destination.longitude)
         var subtitle = destination.details
@@ -183,14 +201,18 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 subtitle = distance + " · " + subtitle
             }
         }
+        var detailSummary = "The car picks its own route."
+        if let open = status {
+            detailSummary = open + "\n" + detailSummary
+        }
         let point = CPPointOfInterest(
             location: MKMapItem(placemark: MKPlacemark(coordinate: coordinate)),
             title: destination.displayName(),
             subtitle: subtitle,
-            summary: nil,
+            summary: status,
             detailTitle: destination.displayName(),
             detailSubtitle: subtitle,
-            detailSummary: "The car picks its own route.",
+            detailSummary: detailSummary,
             pinImage: nil
         )
         point.primaryButton = CPTextButton(title: "Send to \(carName)", textStyle: .confirm) { [weak self] _ in
@@ -300,6 +322,18 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
         position = await location.currentLocation()
         refresh()
+    }
+
+    /// The opening hours of the favorites on the map, once a session: the template follows when they come.
+    private func lookUpInfo(_ favorites: [Favorite]) {
+        guard let model = model else {
+            return
+        }
+        Task {
+            if await model.lookUpInfo(favorites) {
+                refresh()
+            }
+        }
     }
 
     private func refreshStatuses() async {

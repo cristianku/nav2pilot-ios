@@ -44,7 +44,7 @@ public enum AppContainer {
         if withRoutePlanning {
             places = OverpassPlaces(http: httpClient, reserve: PhotonPlaces(http: httpClient))
             // opening hours of the search results, from the same servers
-            placeInfoLookup = PlaceInfoLookup(http: httpClient)
+            placeInfoLookup = sharedPlaceInfoLookup(httpClient)
             routePlanning = RoutePlanning(
                 mapboxTokenStore: mapboxTokenStore,
                 verifier: MapboxTokenVerifier(http: httpClient),
@@ -90,8 +90,22 @@ public enum AppContainer {
             deviceRepository: DeviceRepository(store: dataStore),
             favoritesRepository: FavoritesRepository(store: dataStore),
             transports: TransportRegistry(comma: comma, sunnylink: SunnylinkTransport()),
-            mapboxTokenStore: TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken)
+            mapboxTokenStore: TokenStore(secrets: KeychainSecretStore(service: keychainService), key: TokenStore.keyMapboxToken),
+            placeInfoLookup: sharedPlaceInfoLookup(httpClient)
         )
+    }
+
+    // the app and CarPlay run in the same process: what one found the other does not ask again
+    @MainActor private static var placeInfoLookup: PlaceInfoLookup?
+
+    @MainActor
+    private static func sharedPlaceInfoLookup(_ http: HttpClient) -> PlaceInfoLookup {
+        if let shared = placeInfoLookup {
+            return shared
+        }
+        let lookup = PlaceInfoLookup(http: http)
+        placeInfoLookup = lookup
+        return lookup
     }
 
     private static func appVersion(_ bundle: Bundle) -> String {
