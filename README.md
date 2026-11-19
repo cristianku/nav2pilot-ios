@@ -28,7 +28,7 @@ On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2p
 3. **Send a place.** In Google Maps or Apple Maps open a place, tap **Share** and choose **Nav2Pilot** (the
    first time it may be under **More**), then **Send to …**. That's it.
 
-You can also type an address, paste a map link or coordinates in the **Send** tab, and keep your favourite
+You can also tap **Where to?** on the map, type an address or paste a map link or coordinates, and keep your favourite
 places one tap away.
 
 ## Points of interest
@@ -75,7 +75,7 @@ You can keep official openpilot / sunnypilot and configure `MAPBOX_TOKEN` manual
 build for automatic token transfer. Follow [Configure Mapbox on the comma](#configure-mapbox-on-the-comma)
 below. The guide links `cristianku/openpilot:nav-alpha` and `cristianku/openpilot:sunny-nav-alpha`.
 
-Set it up in **Devices → Mapbox → Set up Mapbox**, the app walks you through it:
+Set it up in **Settings → Mapbox → Set up Mapbox**. The app walks you through it:
 
 1. Create a free Mapbox account. Without a payment card Mapbox only gives you a trial token with low limits;
    with a card you get the free tier, which is plenty for personal use.
