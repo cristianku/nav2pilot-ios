@@ -4,6 +4,47 @@ import UIKit
 
 // Views used by both the app and the share extension.
 
+struct TokenSheet: View {
+    let viewModel: MainViewModel
+    @State private var token = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    if let url = URL(string: CommaEndpoints.tokenPageUrl) {
+                        Link("Get your comma token", destination: url)
+                    }
+                    SecureField("JWT", text: $token)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    PasteButton(payloadType: String.self) { strings in
+                        if let value = strings.first { Task { @MainActor in token = value } }
+                    }
+                } footer: {
+                    Text("The token is checked with the comma API, then stored in the Keychain of this iPhone only.")
+                }
+                if !viewModel.accountMessage.isEmpty { Text(viewModel.accountMessage).foregroundStyle(.red) }
+            }
+            .navigationTitle("comma token")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { viewModel.hideTokenSheet() }.disabled(viewModel.accountBusy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if viewModel.accountBusy { ProgressView() }
+                    else {
+                        Button("Verify and save") { Task { await viewModel.saveToken(token) } }
+                            .disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+            }
+            .interactiveDismissDisabled(viewModel.accountBusy)
+        }
+    }
+}
+
 enum Formatting {
     static func time(_ date: Date) -> String {
         return date.formatted(date: .omitted, time: .shortened)

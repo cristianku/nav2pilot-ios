@@ -30,6 +30,7 @@ public enum JsonCodec {
         if !destination.website.isEmpty {
             json["website"] = destination.website
         }
+        if !destination.locality.isEmpty { json["locality"] = destination.locality }
         return json
     }
 
@@ -52,7 +53,8 @@ public enum JsonCodec {
             kind: Json.string(json, "kind"),
             phone: Json.string(json, "phone"),
             // only a web page opens from the details
-            website: PlaceInfo.webAddress(Json.string(json, "website"))
+            website: PlaceInfo.webAddress(Json.string(json, "website")),
+            locality: Json.string(json, "locality")
         )
     }
 

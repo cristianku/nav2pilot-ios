@@ -90,7 +90,8 @@ public final class MapKitPlaceSearch: PlaceSearch {
             details: details,
             kind: MapKitPlaceSearch.kind(item.pointOfInterestCategory),
             phone: (item.phoneNumber ?? "").trimmingCharacters(in: .whitespacesAndNewlines),
-            website: website
+            website: website,
+            locality: item.placemark.locality ?? ""
         )
     }
 

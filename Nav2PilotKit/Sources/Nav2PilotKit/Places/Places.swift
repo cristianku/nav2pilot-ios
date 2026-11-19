@@ -90,6 +90,7 @@ public struct Place: Equatable {
     public let kind: String
     /// Its opening hours, phone and website, as they came with it from Overpass; nil from Photon, which has none.
     public let info: PlaceInfo?
+    public let parkingNotes: String
 
     public init(
         category: PlaceCategory,
@@ -98,7 +99,8 @@ public struct Place: Equatable {
         name: String,
         details: String,
         kind: String = "",
-        info: PlaceInfo? = nil
+        info: PlaceInfo? = nil,
+        parkingNotes: String = ""
     ) {
         self.category = category
         self.latitude = latitude
@@ -107,6 +109,7 @@ public struct Place: Equatable {
         self.details = details
         self.kind = kind
         self.info = info
+        self.parkingNotes = parkingNotes
     }
 
     public func toDestination() -> Destination {

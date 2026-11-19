@@ -75,7 +75,9 @@ public final class CarScreenModel {
         guard let device = deviceRepository.selectedDevice() else {
             return SendOutcome(success: false, message: "No car in Nav2Pilot yet.")
         }
-        return await sender.send(destination, to: device, waypoints: [])
+        let outcome = await sender.send(destination, to: device, waypoints: [])
+        if outcome.success { favoritesRepository.recordSent(destination) }
+        return outcome
     }
 
     public func clearDestination() async -> SendOutcome {

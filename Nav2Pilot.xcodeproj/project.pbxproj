@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		71A10856DB3D11A19B000001 /* AppShortcuts.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 71A10856DB3D11A19A000001 /* AppShortcuts.xcstrings */; };
+		71A10856DB3D11A19B000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 71A10856DB3D11A19A000002 /* Localizable.xcstrings */; };
 		061351B8AFA494D1B83F34EB /* MapScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A8B59913F37EB0A1904B3C8 /* MapScreenView.swift */; };
 		156DA2D34021E96999133E47 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = EB95B8B34BF08AAE60ECD3A7 /* PrivacyInfo.xcprivacy */; };
 		1DA77A5DCA7356A5D5513123 /* NavMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F707510292D8D1AE3B8307 /* NavMapView.swift */; };
@@ -68,6 +70,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		71A10856DB3D11A19A000001 /* AppShortcuts.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = AppShortcuts.xcstrings; sourceTree = "<group>"; };
+		71A10856DB3D11A19A000002 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		1A9C111FD77B6C8DA9208AB4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		22189BE903F12F08631E3664 /* Base.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Base.xcconfig; sourceTree = "<group>"; };
 		37CA2FFAD5CAB779FB0DDB82 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
@@ -180,6 +184,8 @@
 		8F347B77F56D8C02374AE825 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				71A10856DB3D11A19A000001 /* AppShortcuts.xcstrings */,
+				71A10856DB3D11A19A000002 /* Localizable.xcstrings */,
 				E8D289B632B3CABFE4BA5C4C /* Assets.xcassets */,
 				8DB3729F0282E6108AC0C055 /* CarPlaySceneDelegate.swift */,
 				DD7CDEEC457DBBBB563A142D /* DevicesView.swift */,
@@ -337,6 +343,7 @@
 			knownRegions = (
 				Base,
 				en,
+				it,
 			);
 			mainGroup = 030F5B5B240113A8007C1D0C;
 			minimizedProjectReferenceProxies = 1;
@@ -370,6 +377,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				71A10856DB3D11A19B000001 /* AppShortcuts.xcstrings in Resources */,
+				71A10856DB3D11A19B000002 /* Localizable.xcstrings in Resources */,
 				39293935927B05AADF4B9394 /* Assets.xcassets in Resources */,
 				156DA2D34021E96999133E47 /* PrivacyInfo.xcprivacy in Resources */,
 			);

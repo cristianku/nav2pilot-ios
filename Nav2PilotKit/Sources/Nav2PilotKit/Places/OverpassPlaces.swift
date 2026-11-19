@@ -159,7 +159,8 @@ public final class OverpassPlaces {
                     details: address(tags),
                     kind: PlaceKinds.fromTags(tags, category: category),
                     // the opening hours come with the place: the dialog shows them without asking again
-                    info: PlaceInfo.fromTags(tags)
+                    info: PlaceInfo.fromTags(tags),
+                    parkingNotes: category == .parking ? parkingNotes(tags) : ""
                 )
             )
         }
@@ -179,6 +180,13 @@ public final class OverpassPlaces {
             }
         }
         return category.singular
+    }
+
+    private static func parkingNotes(_ tags: [String: Any]) -> String {
+        let structure = ["underground": "Underground", "multi-storey": "Multi-storey", "surface": "Outdoor"][text(tags, "parking")]
+        let covered = text(tags, "covered") == "yes" ? "Covered" : nil
+        let fee = ["yes": "Paid parking", "no": "Free parking"][text(tags, "fee")]
+        return [structure ?? covered, fee].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// "Hauptstrasse 12, 5070 Frick" from the addr:* tags; "" without them.

@@ -20,6 +20,7 @@ struct MapContent: Equatable {
     var recenterRequest = 0
     /// Points of interest from OpenStreetMap, drawn under the destination and the stops.
     var places: [Place] = []
+    var preview: Place?
 }
 
 /// The full-screen map: Apple Maps for everybody (free, no key), with Mapbox Streets tiles on top when the user has a
@@ -77,6 +78,7 @@ struct NavMapView: UIViewRepresentable {
         coordinator.updateRoutes(map, routes: content.routes)
         coordinator.updatePins(map, destination: content.destination, stops: content.stops)
         coordinator.updatePlaces(map, places: content.places)
+        coordinator.highlight(map, place: content.preview)
         coordinator.moveCamera(map, content: content, insets: insets)
     }
 
@@ -99,6 +101,7 @@ struct NavMapView: UIViewRepresentable {
         private var routeLines: [RouteLine] = []
         private var drawnPinsKey = ""
         private var drawnPlaces: [Place] = []
+        private var preview: Place?
         private var fitted: FitKey?
         private var recenterSeen = 0
         private var centeredOnce = false
@@ -222,6 +225,22 @@ struct NavMapView: UIViewRepresentable {
 
         // MARK: points of interest
 
+        func highlight(_ map: MKMapView, place: Place?) {
+            guard preview != place else { return }
+            preview = place
+            for pin in map.annotations.compactMap({ $0 as? PlaceAnnotation }) {
+                if let marker = map.view(for: pin) as? MKMarkerAnnotationView {
+                    marker.markerTintColor = placeColor(pin)
+                }
+            }
+        }
+
+        private func placeColor(_ pin: PlaceAnnotation) -> UIColor {
+            guard let preview, pin.coordinate.latitude == preview.latitude, pin.coordinate.longitude == preview.longitude,
+                  pin.title == preview.name else { return .systemPurple }
+            return routeColor
+        }
+
         func updatePlaces(_ map: MKMapView, places: [Place]) {
             if places == drawnPlaces {
                 return
@@ -276,7 +295,7 @@ struct NavMapView: UIViewRepresentable {
                 guard let marker = view as? MKMarkerAnnotationView else {
                     return view
                 }
-                marker.markerTintColor = routeColor
+                marker.markerTintColor = placeColor(place)
                 marker.glyphImage = UIImage(systemName: place.category.symbolName)
                 marker.glyphText = nil
                 // the destination and the stops stay on top; places may hide each other when zoomed out
@@ -487,4 +506,3 @@ private struct FitKey: Equatable {
     let destination: Destination?
     let stops: [Destination]
 }
-

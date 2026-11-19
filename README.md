@@ -23,7 +23,7 @@ On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2p
 
 1. **Get your comma token.** Open [jwt.comma.ai](https://jwt.comma.ai), sign in with the account your comma
    device is paired to, and copy the token.
-2. **Add it to the app.** **Devices → Add token**, paste it, **Verify and save**. Your devices show up in the
+2. **Add it to the app.** Tap **Add your car**, or **Connect your car to send** if a place is already open. Paste the token and tap **Verify and save**. Your devices show up in the
    list.
 3. **Send a place.** In Google Maps or Apple Maps open a place, tap **Share** and choose **Nav2Pilot** (the
    first time it may be under **More**), then **Send to …**. That's it.
@@ -33,14 +33,17 @@ places one tap away.
 
 ## Points of interest
 
-The button under the settings, at the top right of the map, opens a menu of places: fuel stations, EV
-charging, parking, rest areas, restaurants, cafés, supermarkets, hotels and pharmacies. Pick one and they show
-up on the part of the map you see (when the map shows a whole region, its middle, about 50 × 50 km). The
-button stays filled while they are on the map; **Hide places** in the same menu takes them away.
+Tap a category below the search field to show places on the visible map. Swipe the row for more categories;
+tap the active category again to hide them or **Search this area** after moving the map.
 
-Tap a place to make it your destination. If you already have one, the app asks whether to add the place as a
-stop on the way (a fuel station on a long drive) or to go there instead. The heart then keeps it in your
-favorites.
+Tap a pin to inspect it, or another pin to compare. Only **Go here** and **Add as stop** change the itinerary.
+For covered garages in Basel, the card shows availability and the time of the reading when known.
+Source: [Parkhäuser Basel-Stadt](https://data.bs.ch/explore/dataset/100088/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+Unidentified garages and stale readings show no count.
+
+In a destination's **Details** you can set Home or Work. Both shortcuts and the last five successfully sent
+places appear in the empty search field. The Siri/Shortcuts action **Find a destination** opens search results;
+it doesn't change your route or send to your car until you choose.
 
 The places come from OpenStreetMap, through a public Overpass server: free, no account, with or without a
 Mapbox token. They are on the iPhone only: CarPlay's driving task apps may not be place finders.

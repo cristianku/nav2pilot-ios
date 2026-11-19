@@ -1,9 +1,35 @@
 import Nav2PilotKit
 import SwiftUI
+import AppIntents
+
+@MainActor private enum PhoneSession {
+    static let model = AppContainer.makeViewModel(withRoutePlanning: true)
+}
+
+/// Open a search on the phone. The spoken query never sends anything to a device.
+struct FindDestinationIntent: AppIntent {
+    static var title: LocalizedStringResource = "Find a destination"
+    static var openAppWhenRun = true
+    @Parameter(title: "Destination", requestValueDialog: "Where would you like to go?")
+    var destination: String
+
+    @MainActor func perform() async throws -> some IntentResult {
+        await PhoneSession.model.voiceSearch(destination)
+        return .result()
+    }
+}
+
+struct Nav2PilotShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(intent: FindDestinationIntent(), phrases: [
+            "Find a destination with \(.applicationName)"
+        ], shortTitle: "Find destination", systemImageName: "magnifyingglass")
+    }
+}
 
 @main
 struct Nav2PilotApp: App {
-    @State private var viewModel = AppContainer.makeViewModel(withRoutePlanning: true)
+    @State private var viewModel = PhoneSession.model
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -63,6 +89,10 @@ struct RootView: View {
         // from the map panel; with the settings open, the settings present it themselves
         .sheet(isPresented: mapboxSheetOverMap()) {
             MapboxTokenSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: Binding(get: { viewModel.tokenSheetVisible && !settingsOpen },
+                                   set: { if !$0 { viewModel.hideTokenSheet() } })) {
+            TokenSheet(viewModel: viewModel)
         }
     }
 

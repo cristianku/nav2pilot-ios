@@ -38,6 +38,17 @@ final class MainViewModelTests: XCTestCase {
 
     private static let ikeaPratteln = Destination(latitude: 47.5302, longitude: 7.7012, name: "IKEA", details: "Grüssenweg 21, 4133 Pratteln")
 
+    func testVoiceSearchPreservesItineraryUntilChoice() async {
+        let vm = createViewModel()
+        vm.chooseCandidate(Self.ikeaPratteln)
+        await vm.addStop(latitude: 47.57, longitude: 7.61)
+        await vm.voiceSearch("47.56,7.59")
+        XCTAssertEqual(vm.choices.count, 1)
+        XCTAssertEqual(vm.destination, Self.ikeaPratteln)
+        XCTAssertEqual(vm.stops.count, 1)
+        XCTAssertTrue(http.requests.isEmpty)
+    }
+
     func testShareThenSendReportsConfirmation() async throws {
         try tokenStore.save(Fixtures.testJwt)
         deviceRepository.addManual(PairedDevice(dongleId: Fixtures.dongleId, alias: "Peugeot 3008"))
@@ -57,6 +68,7 @@ final class MainViewModelTests: XCTestCase {
         await viewModel.sendDestination()
 
         XCTAssertEqual(true, viewModel.feedback?.success)
+        XCTAssertEqual(viewModel.recentSent.first?.destination, viewModel.destination)
         XCTAssertEqual("Destination sent to Peugeot 3008.", viewModel.feedback?.message)
         XCTAssertFalse(viewModel.sending)
         XCTAssertEqual("setNavDestination", jsonObject(http.requests.last?.body)["method"] as? String)

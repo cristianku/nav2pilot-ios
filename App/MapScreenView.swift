@@ -14,11 +14,15 @@ struct MapScreenView: View {
     @State private var searchEditing = false
     @State private var query = ""
     @State private var panelSize = CGSize.zero
+    @State private var previewHeight: CGFloat = 0
     @FocusState private var searchFocused: Bool
     // the part of the map in view, where the places are looked for; a box, so a map move does not redraw the screen
     @State private var mapArea = MapAreaBox()
+    @State private var searchAreaOffered = false
     // a place tapped while there is already a destination: a stop, or the destination instead
     @State private var tappedPlace: Place?
+    @State private var shortcutHint = ""
+    @State private var seenVoice = 0
     // "none found" and the errors of the places menu, for a few seconds
     @State private var placesNote = ""
 
@@ -40,7 +44,8 @@ struct MapScreenView: View {
             selectedRouteIndex: viewModel.selectedRouteIndex,
             origin: viewModel.origin,
             recenterRequest: viewModel.recenterRequest,
-            places: viewModel.places
+            places: viewModel.places,
+            preview: tappedPlace
         )
         let token = mapboxToken()
         GeometryReader { geometry in
@@ -56,62 +61,66 @@ struct MapScreenView: View {
                         mapTapped()
                     },
                     onLongPress: { latitude, longitude in
-                        longPressed(latitude: latitude, longitude: longitude)
+                        if tappedPlace == nil { longPressed(latitude: latitude, longitude: longitude) }
                     },
                     onSelectRoute: { index in
-                        viewModel.selectRoute(index)
+                        if tappedPlace == nil { viewModel.selectRoute(index) } else { tappedPlace = nil }
                     },
                     onTapPlace: { index in
                         placeTapped(index)
                     },
                     onAreaChange: { area in
                         mapArea.value = area
+                        if let old = viewModel.placesArea {
+                            let height = old.north - old.south, width = old.east - old.west
+                            searchAreaOffered = abs(area.center().latitude - old.center().latitude) > height / 4 ||
+                                abs(area.center().longitude - old.center().longitude) > width / 4 ||
+                                area.north - area.south > height * 1.5 || area.east - area.west > width * 1.5
+                        }
                     }
                 )
                 .ignoresSafeArea()
 
-                if viewModel.destination != nil {
+                if viewModel.destination != nil && tappedPlace == nil {
                     panel(wide: wide, panelWidth: panelWidth, leadingSafeArea: geometry.safeAreaInsets.leading)
                 }
 
                 topControls(wide: wide, panelWidth: panelWidth)
 
                 // with a destination the panel has all it needs: no buttons on the map to distract
-                if viewModel.destination == nil {
+                if viewModel.destination == nil && tappedPlace == nil && !searchEditing {
                     bottomButtons()
                 }
 
                 if !placesNote.isEmpty {
                     placesNoteView()
                 }
+                if let place = tappedPlace {
+                    let same = viewModel.destination?.sameLocationAs(place.toDestination()) == true
+                    PlacePreviewCard(place: place, parking: viewModel.parking,
+                                     canGo: !same, canAdd: !same && viewModel.destination != nil && viewModel.stops.count < MainViewModel.maxStops,
+                                     dismiss: { tappedPlace = nil },
+                                     go: { tappedPlace = nil; viewModel.choosePlace(place) },
+                                     add: {
+                                         tappedPlace = nil
+                                         Task { await viewModel.addStop(latitude: place.latitude, longitude: place.longitude) }
+                                     })
+                        .id("\(place.latitude),\(place.longitude),\(place.name)")
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
+                        .frame(maxWidth: wide ? panelWidth : 520, maxHeight: geometry.size.height * 0.65, alignment: .bottom)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: wide ? .bottomLeading : .bottom)
+                }
             }
         }
-        .confirmationDialog(
-            tappedPlace?.name ?? "",
-            isPresented: Binding(
-                get: { tappedPlace != nil },
-                set: { shown in
-                    if !shown {
-                        tappedPlace = nil
-                    }
-                }
-            ),
-            titleVisibility: .visible,
-            presenting: tappedPlace
-        ) { place in
-            if viewModel.stops.count < MainViewModel.maxStops {
-                Button("Add as stop") {
-                    Task {
-                        await viewModel.addStop(latitude: place.latitude, longitude: place.longitude)
-                    }
-                }
-            }
-            Button("Go here instead") {
-                viewModel.choosePlace(place)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { place in
-            Text(MapScreenView.placeDescription(place))
+        .onChange(of: viewModel.placesCategory) { tappedPlace = nil; searchAreaOffered = false }
+        .onChange(of: viewModel.showSendTabRequest) { tappedPlace = nil }
+        .onChange(of: viewModel.voiceRequest, initial: true) {
+            guard viewModel.voiceRequest != seenVoice else { return }
+            seenVoice = viewModel.voiceRequest
+            tappedPlace = nil
+            query = viewModel.voiceQuery
+            searchEditing = true
         }
         .task(id: viewModel.placesMessageRequest) {
             if viewModel.placesMessageRequest == 0 {
@@ -159,7 +168,9 @@ struct MapScreenView: View {
         }
         // Apple's legal label must stay visible: with a destination above the panel on the phone, right of it in
         // landscape (no buttons then); without one above the favorites and recentre buttons
-        if viewModel.destination != nil {
+        if tappedPlace != nil && !wide {
+            insets.bottom = safeArea.bottom + previewHeight + 16
+        } else if viewModel.destination != nil {
             if wide {
                 // the panel also covers the leading safe area
                 insets.leading = safeArea.leading + panelWidth
@@ -179,7 +190,7 @@ struct MapScreenView: View {
     }
 
     private func secondRowVisible() -> Bool {
-        return !searchEditing && (searchVisible() || viewModel.placesAvailable)
+        return !searchEditing && viewModel.placesAvailable
     }
 
     private func mapboxToken() -> String? {
@@ -190,7 +201,9 @@ struct MapScreenView: View {
     }
 
     private func mapTapped() {
-        if searchEditing {
+        if tappedPlace != nil {
+            tappedPlace = nil
+        } else if searchEditing {
             stopEditing()
         } else if viewModel.destination != nil {
             searchShown.toggle()
@@ -207,24 +220,16 @@ struct MapScreenView: View {
         }
     }
 
-    /// With no destination yet the place becomes it; otherwise the user picks: a stop, or the destination instead.
+    /// Inspection is local UI state: even a first pin cannot change an itinerary.
     private func placeTapped(_ index: Int) {
-        if index >= viewModel.places.count {
-            return
-        }
-        let place = viewModel.places[index]
-        guard let current = viewModel.destination else {
-            viewModel.choosePlace(place)
-            return
-        }
-        if !place.toDestination().sameLocationAs(current) {
-            tappedPlace = place
-        }
+        guard viewModel.places.indices.contains(index) else { return }
+        stopEditing()
+        tappedPlace = viewModel.places[index]
     }
 
     /// The address, then the kind of place when the name does not say it already and whether it is open now:
     /// "Fast food · Open · Closes 23:00".
-    private static func placeDescription(_ place: Place) -> String {
+    fileprivate static func placeDescription(_ place: Place, includeHours: Bool) -> String {
         var lines: [String] = []
         if !place.details.isEmpty {
             lines.append(place.details)
@@ -239,7 +244,7 @@ struct MapScreenView: View {
             parts.append(label)
         }
         // an alert shows plain text: the open or closed without its colour
-        if let info = place.info, let hours = OpeningHours.parse(info.openingHours) {
+        if includeHours, let info = place.info, let hours = OpeningHours.parse(info.openingHours) {
             parts.append(hours.statusText(at: Date()).text)
         }
         if !parts.isEmpty {
@@ -281,8 +286,10 @@ struct MapScreenView: View {
                 Group {
                     if searchVisible() {
                         searchBox()
-                    } else {
+                    } else if viewModel.selectedDevice() != nil {
                         carButton()
+                    } else {
+                        Color.clear.frame(height: 1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,18 +299,34 @@ struct MapScreenView: View {
                 }
             }
             if secondRowVisible() {
-                HStack(alignment: .top, spacing: 8) {
-                    Group {
-                        if searchVisible() {
-                            carButton()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack {
+                        ForEach(PlaceCategory.allCases) { category in
+                            let active = viewModel.placesCategory == category
+                            Button {
+                                tappedPlace = nil
+                                if active { viewModel.hidePlaces() }
+                                else { Task { await viewModel.showPlaces(category, in: mapArea.value) } }
+                            } label: {
+                                Label(category.label, systemImage: category.symbolName)
+                                    .font(.subheadline.weight(.semibold))
+                                    .padding(.horizontal, 12).frame(minHeight: 42)
+                                    .foregroundStyle(active ? Theme.onAccent : Theme.brand)
+                                    .background(active ? Theme.brand : Theme.card, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(active ? .isSelected : [])
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    if viewModel.placesAvailable {
-                        PlacesButton(viewModel: viewModel, area: {
-                            return mapArea.value
-                        })
+                }
+                if searchAreaOffered, !viewModel.placesLoading, let category = viewModel.placesCategory {
+                    Button("Search this area") {
+                        tappedPlace = nil
+                        searchAreaOffered = false
+                        Task { await viewModel.showPlaces(category, in: mapArea.value) }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
                 }
             }
         }
@@ -316,6 +339,9 @@ struct MapScreenView: View {
     private func searchBox() -> some View {
         if !searchEditing {
             Button {
+                tappedPlace = nil
+                query = ""
+                shortcutHint = ""
                 searchEditing = true
                 searchFocused = true
             } label: {
@@ -379,6 +405,26 @@ struct MapScreenView: View {
 
                 if query.isEmpty {
                     Divider()
+                    HStack {
+                        ForEach(["Home", "Work"], id: \.self) { slot in
+                            let saved = viewModel.shortcuts.first { $0.id == slot }
+                            Button(saved == nil ? "Set \(slot)" : slot) {
+                                if let saved { stopEditing(); viewModel.selectFavorite(saved) }
+                                else { shortcutHint = "Choose a destination, then open Details → Set as \(slot)." }
+                            }
+                        }
+                    }.padding(.horizontal, 12)
+                    if !shortcutHint.isEmpty { Text(shortcutHint).font(.caption).padding(.horizontal, 12) }
+                    if !viewModel.recentSent.isEmpty {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(viewModel.recentSent) { entry in
+                                    Button(entry.destination.displayName()) { stopEditing(); viewModel.selectFavorite(entry) }
+                                }
+                                Button("Clear recently sent") { viewModel.clearRecent() }
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }.frame(maxHeight: 140).padding(.horizontal, 12)
+                    }
                     // PasteButton reads the clipboard only when tapped, without the iOS paste permission prompt.
                     PasteButton(payloadType: String.self) { strings in
                         guard let text = strings.first else {
@@ -453,7 +499,7 @@ struct MapScreenView: View {
             HStack(spacing: 14) {
                 KindIcon(kind: viewModel.kind(for: choice))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(choice.displayName())
+                    Text(choice.displayName() + (choice.locality.isEmpty || choice.locality == choice.name ? "" : " · " + choice.locality))
                         .foregroundStyle(.primary)
                     let caption = choiceCaption(choice)
                     if !caption.isEmpty {
@@ -468,6 +514,10 @@ struct MapScreenView: View {
                     }
                 }
                 Spacer(minLength: 0)
+                if let here = viewModel.origin {
+                    Text(RouteFormatting.distance(RouteShaping.distanceMeters(here, LatLng(latitude: choice.latitude, longitude: choice.longitude))))
+                        .font(.caption.weight(.medium))
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
@@ -488,10 +538,6 @@ struct MapScreenView: View {
             parts.append(choice.details)
         } else if choice.displayName() != choice.coordinatesText() {
             parts.append(choice.coordinatesText())
-        }
-        if let here = viewModel.origin {
-            let there = LatLng(latitude: choice.latitude, longitude: choice.longitude)
-            parts.append(RouteFormatting.distance(RouteShaping.distanceMeters(here, there)))
         }
         return parts.joined(separator: " · ")
     }
@@ -606,6 +652,8 @@ struct MapScreenView: View {
             HStack {
                 MapButton(systemName: "heart.fill", label: "Favorites", action: openFavorites)
                 Spacer()
+                carButton()
+                Spacer()
                 MapButton(systemName: "location.fill", label: "Show my position") {
                     Task {
                         await viewModel.refreshMyLocation(recenter: true)
@@ -670,6 +718,7 @@ private struct DestinationPanel: View {
     let viewModel: MainViewModel
     let openSettings: () -> Void
     @State private var detailsVisible = false
+    @State private var justSent = false
 
     var body: some View {
         if let destination = viewModel.destination {
@@ -748,6 +797,14 @@ private struct DestinationPanel: View {
                 .font(.subheadline.weight(.medium))
 
                 if detailsVisible {
+                    HStack {
+                        ForEach(["Home", "Work"], id: \.self) { slot in
+                            let assigned = viewModel.shortcuts.first { $0.id == slot }?.destination.sameLocationAs(destination) == true
+                            Button(assigned ? "Remove \(slot)" : "Set as \(slot)") {
+                                viewModel.setShortcut(slot, to: assigned ? nil : destination)
+                            }
+                        }
+                    }
                     let info = viewModel.info(for: destination)
                     if !info.isEmpty() {
                         PlaceInfoBlock(info: info)
@@ -902,6 +959,11 @@ private struct DestinationPanel: View {
             Button {
                 Task {
                     await viewModel.sendDestination()
+                    if viewModel.feedback?.success == true {
+                        justSent = true
+                        try? await Task.sleep(for: .seconds(2.5))
+                        justSent = false
+                    }
                 }
             } label: {
                 HStack(spacing: 12) {
@@ -909,10 +971,10 @@ private struct DestinationPanel: View {
                         ProgressView()
                             .tint(Theme.onAccent)
                     } else {
-                        Image(systemName: "paperplane.fill")
+                        Image(systemName: justSent ? "checkmark.circle.fill" : "paperplane.fill")
                     }
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Send to " + CarName.of(device))
+                        Text((justSent ? "Sent to " : "Send to ") + CarName.of(device))
                             .fontWeight(.semibold)
                             .lineLimit(1)
                         if needsMapbox() {
@@ -927,10 +989,12 @@ private struct DestinationPanel: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.roundedRectangle(radius: 16))
             .controlSize(.large)
-            .disabled(viewModel.sending)
+            .tint(justSent ? Theme.success : Theme.brand)
+            .sensoryFeedback(.success, trigger: justSent) { _, new in new }
+            .disabled(viewModel.sending || justSent)
         } else {
-            Button(action: openSettings) {
-                Text(viewModel.hasToken ? "Choose your car" : "Connect your comma account")
+            Button(action: { if viewModel.hasToken { openSettings() } else { viewModel.showTokenSheet() } }) {
+                Text(viewModel.hasToken ? "Choose your car" : "Connect your car to send")
                     .fontWeight(.semibold)
                     .foregroundStyle(Theme.onAccent)
                     .frame(maxWidth: .infinity, minHeight: 40)
@@ -942,54 +1006,58 @@ private struct DestinationPanel: View {
     }
 }
 
-/// Points of interest: the categories in a menu; the one picked is looked up in the part of the map in view.
-private struct PlacesButton: View {
-    let viewModel: MainViewModel
-    let area: () -> MapArea?
+private struct PlacePreviewCard: View {
+    let place: Place
+    let parking: BaselParking?
+    let canGo: Bool
+    let canAdd: Bool
+    let dismiss: () -> Void
+    let go: () -> Void
+    let add: () -> Void
+    @State private var garage: BaselParking.Garage?
 
     var body: some View {
-        let shown = viewModel.placesCategory != nil
-        Menu {
-            Section("From OpenStreetMap, in the part of the map you see. Tap a place on the map to go there.") {
-                ForEach(PlaceCategory.allCases) { category in
-                    Button {
-                        Task {
-                            await viewModel.showPlaces(category, in: area())
-                        }
-                    } label: {
-                        if category == viewModel.placesCategory {
-                            Label(category.label, systemImage: "checkmark")
-                        } else {
-                            Label(category.label, systemImage: category.symbolName)
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    let fallback = place.name == place.category.singular && !place.details.isEmpty
+                        ? "\(place.name) · \(place.details.prefix { $0 != "," })" : place.name
+                    Label(garage?.title ?? fallback, systemImage: place.category.symbolName)
+                        .font(.headline)
+                    Spacer()
+                    Button(action: dismiss) {
+                        Image(systemName: "xmark").frame(width: 44, height: 44)
+                    }.accessibilityLabel("Close place preview")
+                }
+                let description = MapScreenView.placeDescription(place, includeHours: garage == nil)
+                if let garage, !garage.address.isEmpty && !description.contains(garage.address) { Text(garage.address) }
+                if !description.isEmpty { Text(description) }
+                if place.details.isEmpty && garage == nil { Text(place.toDestination().coordinatesText()).font(.caption) }
+                if !place.parkingNotes.isEmpty { Text(place.parkingNotes) }
+                if place.category == .parking {
+                    Text(garage?.availability ?? "Availability unknown").bold()
+                    if let garage {
+                        Text("Parkhäuser Basel-Stadt · \(garage.published.formatted(date: .omitted, time: .shortened))")
+                            .font(.caption)
                     }
                 }
-            }
-            Section {
-                Button {
-                    viewModel.hidePlaces()
-                } label: {
-                    Label("Hide places", systemImage: "xmark")
+                HStack {
+                    if canGo { Button("Go here", action: go).buttonStyle(.borderedProminent) }
+                    if canAdd { Button("Add as stop", action: add).buttonStyle(.bordered) }
                 }
-                .disabled(!shown)
-            }
-        } label: {
-            ZStack {
-                if viewModel.placesLoading {
-                    ProgressView()
-                        .tint(shown ? Theme.onAccent : Theme.brand)
-                } else {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.title3)
-                        .foregroundStyle(shown ? Theme.onAccent : Theme.brand)
-                }
-            }
-            .frame(width: 52, height: 52)
-            .background(shown ? Theme.brand : Theme.card, in: Circle())
-            .shadow(color: .black.opacity(0.18), radius: 6, y: 2)
+            }.padding(14)
         }
-        .menuOrder(.fixed)
-        .accessibilityLabel("Points of interest")
+        .scrollBounceBehavior(.basedOnSize)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 20))
+        .shadow(radius: 6)
+        .task {
+            guard place.category == .parking else { return }
+            while !Task.isCancelled {
+                garage = await parking?.lookup(place)
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            }
+        }
     }
 }
 

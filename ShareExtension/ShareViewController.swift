@@ -129,7 +129,7 @@ enum SharedItems {
 }
 
 struct ShareView: View {
-    let viewModel: MainViewModel
+    @Bindable var viewModel: MainViewModel
     let onDone: () -> Void
 
     var body: some View {
@@ -157,16 +157,24 @@ struct ShareView: View {
                     if !viewModel.resolving && viewModel.resolveError.isEmpty {
                         DestinationCard(viewModel: viewModel, showsMapLinks: false, allowsClear: false)
                     }
-                    DeviceCard(viewModel: viewModel, onOpenDevices: nil, showsClearOnDevice: false)
+                    if viewModel.hasToken {
+                        DeviceCard(viewModel: viewModel, onOpenDevices: nil, showsClearOnDevice: false)
+                    }
                 }
                 .padding(.horizontal, Theme.screenPadding)
                 .padding(.vertical, 16)
             }
             .background(Theme.background)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                SendBar(viewModel: viewModel)
+                if viewModel.hasToken {
+                    SendBar(viewModel: viewModel)
+                } else {
+                    Button("Connect your car to send") { viewModel.showTokenSheet() }
+                        .buttonStyle(.borderedProminent).padding()
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(isPresented: $viewModel.tokenSheetVisible) { TokenSheet(viewModel: viewModel) }
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     BrandHeader(logoSize: 26, titleFont: .headline)

@@ -1,0 +1,10 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Destination" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Destinazione" } } } },
+    "Find destination" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca destinazione" } } } },
+    "Find a destination" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Prepara una destinazione" } } } },
+    "Where would you like to go?" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Dove vuoi andare?" } } } }
+  },
+  "version" : "1.0"
+}

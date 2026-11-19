@@ -30,6 +30,7 @@ public struct Destination: Equatable {
     public var phone: String
     /// Its web page, an http or https address; "" when none.
     public var website: String
+    public var locality: String
 
     public init(
         latitude: Double,
@@ -39,7 +40,8 @@ public struct Destination: Equatable {
         approximate: Bool = false,
         kind: String = "",
         phone: String = "",
-        website: String = ""
+        website: String = "",
+        locality: String = ""
     ) {
         self.latitude = latitude
         self.longitude = longitude
@@ -49,6 +51,7 @@ public struct Destination: Equatable {
         self.kind = kind
         self.phone = phone
         self.website = website
+        self.locality = locality
     }
 
     public func coordinatesText() -> String {

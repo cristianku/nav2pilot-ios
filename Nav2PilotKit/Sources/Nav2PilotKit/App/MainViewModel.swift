@@ -44,6 +44,19 @@ public final class MainViewModel {
     public private(set) var choices: [Destination] = []
     /// Places matching what is being typed, before Return is pressed.
     public private(set) var suggestions: [Destination] = []
+    public private(set) var voiceRequest = 0
+    public private(set) var voiceQuery = ""
+    public func voiceSearch(_ text: String) async {
+        let query = String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(500))
+        voiceQuery = query
+        voiceRequest += 1
+        requestSendTab()
+        await resolve {
+            let result = await self.resolver.resolveTyped(query)
+            if case .resolved(let place, _) = result { return .choices(query: query, candidates: [place]) }
+            return result
+        }
+    }
     /// Opening hours (and more) of the search results and the destination from OpenStreetMap, by
     /// PlaceInfoLookup.key; empty for a place OpenStreetMap has nothing for. See `info(for:)`.
     public private(set) var placeInfo: [String: PlaceInfo] = [:]
@@ -81,6 +94,7 @@ public final class MainViewModel {
     public private(set) var placesCategory: PlaceCategory?
     public private(set) var places: [Place] = []
     public private(set) var placesLoading = false
+    public private(set) var placesArea: MapArea?
     /// Why no places are shown: none found, or OpenStreetMap could not answer.
     public private(set) var placesMessage = ""
     /// Incremented with each new placesMessage, so that the screen shows it once.
@@ -90,6 +104,16 @@ public final class MainViewModel {
     public private(set) var devices: [PairedDevice] = []
     public private(set) var selectedDongleId = ""
     public private(set) var favorites: [Favorite] = []
+    public private(set) var shortcuts: [Favorite] = []
+    public private(set) var recentSent: [Favorite] = []
+    public func setShortcut(_ slot: String, to place: Destination?) {
+        favoritesRepository.setShortcut(slot, to: place)
+        shortcuts = favoritesRepository.entries("shortcuts")
+    }
+    public func clearRecent() {
+        favoritesRepository.clearRecent()
+        recentSent = []
+    }
 
     /// Incremented when the Send tab should be brought to front (share received, favorite picked).
     public private(set) var showSendTabRequest = 0
@@ -111,6 +135,7 @@ public final class MainViewModel {
     private let sender: DestinationSender
     private let placesSource: OverpassPlaces?
     private let placeInfoLookup: PlaceInfoLookup?
+    public let parking: BaselParking?
 
     private var resolveGeneration = 0
     private var connectionGeneration = 0
@@ -133,6 +158,7 @@ public final class MainViewModel {
         mapboxTokenStore: TokenStore? = nil,
         places: OverpassPlaces? = nil,
         placeInfoLookup: PlaceInfoLookup? = nil,
+        parking: BaselParking? = nil,
         typingPause: Duration = .milliseconds(300),
         now: @escaping () -> Date = { Date() }
     ) {
@@ -148,6 +174,7 @@ public final class MainViewModel {
         self.routePlanning = routePlanning
         self.placesSource = places
         self.placeInfoLookup = placeInfoLookup
+        self.parking = parking
         let tokens: TokenStore?
         if let store = mapboxTokenStore {
             tokens = store
@@ -455,6 +482,10 @@ public final class MainViewModel {
         sending = true
         feedback = nil
         let outcome = await sender.send(current, to: device, waypoints: plannedWaypoints())
+        if outcome.success {
+            favoritesRepository.recordSent(current)
+            recentSent = favoritesRepository.entries("recentSent")
+        }
         feedback = SendFeedback(success: outcome.success, message: outcome.message, time: now())
         sending = false
     }
@@ -807,16 +838,22 @@ public final class MainViewModel {
             return
         }
         placesCategory = category
+        placesArea = area
         places = []
         placesLoading = true
-        let result = await source.search(category, in: area.limited(to: MainViewModel.placesMaxHalfMeters))
+        let limited = area.limited(to: MainViewModel.placesMaxHalfMeters)
+        async let osm = source.search(category, in: limited)
+        let official = category == .parking ? await parking?.places(in: limited) ?? [] : []
+        if generation == placesGeneration && !official.isEmpty { places = official }
+        let result = await osm
         if generation != placesGeneration {
             // hidden or replaced by another category meanwhile
             return
         }
         placesLoading = false
         switch result {
-        case .success(let found):
+        case .success(let fromMap):
+            let found = parking?.merge(official, with: fromMap) ?? fromMap
             if found.isEmpty {
                 placesCategory = nil
                 places = []
@@ -825,6 +862,7 @@ public final class MainViewModel {
             }
             places = found
         case .failure(let error):
+            if !official.isEmpty { return }
             placesCategory = nil
             places = []
             placesNotice(MainViewModel.placesErrorText(error))
@@ -832,6 +870,7 @@ public final class MainViewModel {
     }
 
     public func hidePlaces() {
+        placesArea = nil
         placesGeneration += 1
         placesCategory = nil
         places = []
@@ -967,6 +1006,8 @@ public final class MainViewModel {
     }
 
     private func copyStoredData() {
+        shortcuts = favoritesRepository.entries("shortcuts")
+        recentSent = favoritesRepository.entries("recentSent")
         devices = deviceRepository.devices
         selectedDongleId = deviceRepository.selectedDongleId
         favorites = favoritesRepository.favorites

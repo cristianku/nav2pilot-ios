@@ -1,0 +1,13 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Find a destination with ${applicationName}" : {
+      "localizations" : {
+        "it" : {
+          "stringUnit" : { "state" : "translated", "value" : "Prepara una destinazione con ${applicationName}" }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

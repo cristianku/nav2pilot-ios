@@ -65,7 +65,8 @@ public enum AppContainer {
             routePlanning: routePlanning,
             mapboxTokenStore: mapboxTokenStore,
             places: places,
-            placeInfoLookup: placeInfoLookup
+            placeInfoLookup: placeInfoLookup,
+            parking: withRoutePlanning ? BaselParking(http: httpClient) : nil
         )
     }
 
