@@ -5,6 +5,13 @@ import XCTest
 final class Nav2PilotUITests: XCTestCase {
     private let coordinates = "45.464200, 9.190000"
 
+    private func launchMap(_ app: XCUIApplication) {
+        app.launch()
+        if app.buttons["highlightsSkip"].waitForExistence(timeout: 2) {
+            app.buttons["highlightsSkip"].tap()
+        }
+    }
+
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
@@ -12,7 +19,7 @@ final class Nav2PilotUITests: XCTestCase {
 
     func testTypedCoordinatesBecomeTheDestinationAndAFavorite() {
         let app = XCUIApplication()
-        app.launch()
+        launchMap(app)
 
         // the search pill opens the search field
         let pill = app.buttons["Search a place"]
@@ -84,7 +91,7 @@ final class Nav2PilotUITests: XCTestCase {
 
     func testGeoLinkOpensTheApp() {
         let app = XCUIApplication()
-        app.launch()
+        launchMap(app)
         guard let url = URL(string: "geo:0,0?q=45.1,9.2(Garage)") else {
             return XCTFail("bad URL")
         }
@@ -102,7 +109,7 @@ final class Nav2PilotUITests: XCTestCase {
     /// App Group defaults); without one it is skipped. Nothing is sent: the test never taps Send.
     func testScreenshotTour() throws {
         let app = XCUIApplication()
-        app.launch()
+        launchMap(app)
 
         app.buttons["Settings"].tap()
         let carActions = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Actions for ")).firstMatch
@@ -141,12 +148,34 @@ final class Nav2PilotUITests: XCTestCase {
     /// Parking is discoverable before making any request to OpenStreetMap.
     func testMapShowsPlaceCategories() {
         let app = XCUIApplication()
-        app.launch()
+        launchMap(app)
 
         for label in ["Fuel stations", "EV charging", "Parking"] {
             XCTAssertTrue(app.buttons[label].waitForExistence(timeout: 5), label)
         }
         attachScreenshot(app, "Places")
+    }
+
+    func testHighlightsReplayReturnsToSettingsAndStaysDismissedOnLaunch() {
+        let app = XCUIApplication()
+        launchMap(app)
+        app.buttons["Settings"].tap()
+        let replay = app.buttons["highlightsReplay"]
+        for _ in 0..<8 {
+            if replay.isHittable { break }
+            app.swipeUp()
+        }
+        replay.tap()
+        let next = app.buttons["highlightsNext"]
+        XCTAssertTrue(next.waitForExistence(timeout: 5))
+        next.tap()
+        next.tap()
+        next.tap()
+        XCTAssertTrue(replay.waitForExistence(timeout: 5))
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.buttons["Search a place"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["highlightsSkip"].exists)
     }
 
     private func attachScreenshot(_ app: XCUIApplication, _ name: String) {

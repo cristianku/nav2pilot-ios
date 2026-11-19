@@ -59,8 +59,19 @@ struct RootView: View {
     @Bindable var viewModel: MainViewModel
     @State private var settingsOpen = false
     @State private var favoritesOpen = false
+    @AppStorage("releaseHighlights.seenEdition") private var seenEdition = ""
 
     var body: some View {
+        Group {
+            if seenEdition != ReleaseHighlights.edition && viewModel.showSendTabRequest == 0 {
+                ReleaseHighlights { seenEdition = ReleaseHighlights.edition }
+            } else {
+                map
+            }
+        }
+    }
+
+    private var map: some View {
         MapScreenView(
             viewModel: viewModel,
             openSettings: {

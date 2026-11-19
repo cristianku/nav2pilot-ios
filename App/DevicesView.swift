@@ -7,6 +7,7 @@ struct DevicesView: View {
     let onClose: () -> Void
     @State private var connectionDetailsExpanded = false
     @State private var deviceToRemove: PairedDevice?
+    @State private var highlightsOpen = false
 
     var body: some View {
         NavigationStack {
@@ -36,6 +37,9 @@ struct DevicesView: View {
             }
             .sheet(isPresented: $viewModel.mapboxSheetVisible) {
                 MapboxTokenSheet(viewModel: viewModel)
+            }
+            .sheet(isPresented: $highlightsOpen) {
+                ReleaseHighlights { highlightsOpen = false }
             }
             .confirmationDialog(removeTitle(), isPresented: removeDialogBinding(), titleVisibility: .visible) {
                 Button("Remove", role: .destructive) {
@@ -379,6 +383,10 @@ struct DevicesView: View {
             .padding(.vertical, 8)
             .listRowBackground(Color.clear)
             .accessibilityElement(children: .combine)
+            Button { highlightsOpen = true } label: {
+                Label("What’s new", systemImage: "sparkles")
+            }
+            .accessibilityIdentifier("highlightsReplay")
         }
     }
 

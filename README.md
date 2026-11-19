@@ -21,6 +21,13 @@ On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2p
 
 ## Getting started
 
+The first time you open a new feature edition, **What’s new** gives you a short illustrated tour. Swipe or use
+**Next**, skip it at any time, and replay it under **Settings → What’s new**. Shared places, map links and Siri
+searches take priority over the tour.
+
+For the next feature release, update the slides and `edition` in `App/ReleaseHighlights.swift` together with
+their translations in `App/Localizable.xcstrings`. Rebuilds with the same slides keep the same edition.
+
 1. **Get your comma token.** Open [jwt.comma.ai](https://jwt.comma.ai), sign in with the account your comma
    device is paired to, and copy the token.
 2. **Add it to the app.** Tap **Add your car**, or **Connect your car to send** if a place is already open. Paste the token and tap **Verify and save**. Your devices show up in the
