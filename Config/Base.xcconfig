@@ -8,3 +8,4 @@
 DEVELOPMENT_TEAM =
 
 #include? "Local.xcconfig"
+#include? "Feedback.xcconfig"

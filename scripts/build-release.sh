@@ -118,6 +118,13 @@ xcodebuild -project Nav2Pilot.xcodeproj -scheme Nav2Pilot -configuration Release
   archive 2>&1 | grep -E "error:|ARCHIVE (SUCCEEDED|FAILED)"
 
 echo "== export and upload to TestFlight"
+# The public repository contains no inbox key. Check the built app, not just the source setting.
+CLIENT_KEY="$(/usr/libexec/PlistBuddy -c 'Print :FeedbackClientKey' "$ARCHIVE/Products/Applications/Nav2Pilot.app/Info.plist" 2>/dev/null || true)"
+if [[ ! "$CLIENT_KEY" =~ ^[A-Za-z0-9_-]{16,}$ ]]; then
+  echo "Feedback client key missing from the archive. Configure Config/Feedback.xcconfig before publishing."
+  exit 1
+fi
+unset CLIENT_KEY
 # system PATH: the export runs /usr/bin/rsync, which starts the first rsync in PATH as its other end, and
 # Homebrew's rsync rejects --extended-attributes ("Copy failed")
 rm -rf build/export

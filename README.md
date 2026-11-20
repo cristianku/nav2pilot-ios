@@ -21,6 +21,11 @@ On Android? There is [Nav2Pilot for Android](https://github.com/cristianku/nav2p
 
 ## Getting started
 
+**Settings → Send feedback** lets you send the message and displayed version information directly to the team.
+The invitation appears only after using the app on three different days. You can defer it for 60 days or stop
+reminders; a confirmed submission also stops them on that installation. Feedback is always available in Settings.
+For distribution, supply the app-scoped `NAV2PILOT_FEEDBACK_KEY` setting in the ignored `Config/Feedback.xcconfig`.
+
 The first time you open a new feature edition, **What’s new** gives you a short illustrated tour. Swipe or use
 **Next**, skip it at any time, and replay it under **Settings → What’s new**. Shared places, map links and Siri
 searches take priority over the tour.

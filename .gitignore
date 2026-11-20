@@ -14,6 +14,7 @@ Nav2PilotKit/.swiftpm/
 
 # Local signing settings (team ID)
 Config/Local.xcconfig
+Config/Feedback.xcconfig
 
 # macOS
 .DS_Store

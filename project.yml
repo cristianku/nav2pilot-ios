@@ -41,6 +41,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Nav2Pilot
+        FeedbackClientKey: $(NAV2PILOT_FEEDBACK_KEY)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}

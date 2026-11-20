@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Change the edition id with the slides, not on every build of the same release.
 struct ReleaseHighlights: View {
-    static let edition = "places-and-parking-1"
+    static let edition = "places-and-feedback-2"
     let close: () -> Void
     @State private var page = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -25,7 +25,10 @@ struct ReleaseHighlights: View {
               symbol: "parkingsign", example: "12 spaces free", accent: Color(red: 0.53, green: 0.93, blue: 0.82)),
         Slide(label: "In search", title: "Your usual places, one tap away",
               body: "Save Home or Work in a destination’s details. Open search for them and your recently sent places. You can also prepare a search with Siri or Shortcuts.",
-              symbol: "heart.fill", example: "Home  ·  Work", accent: Color(red: 0.65, green: 0.81, blue: 1))
+              symbol: "heart.fill", example: "Home  ·  Work", accent: Color(red: 0.65, green: 0.81, blue: 1)),
+        Slide(label: "Feedback", title: "Tell us what you think",
+              body: "Send feedback from Settings whenever you like. If we ask in the app, you can write now, come back later, or turn off reminders.",
+              symbol: "bubble.left.fill", example: "Send feedback", accent: Color(red: 0.52, green: 0.87, blue: 0.90))
     ]
 
     var body: some View {

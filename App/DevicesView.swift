@@ -8,6 +8,8 @@ struct DevicesView: View {
     @State private var connectionDetailsExpanded = false
     @State private var deviceToRemove: PairedDevice?
     @State private var highlightsOpen = false
+    @State private var writingFeedback = false
+    @Environment(TesterFeedback.self) private var testerFeedback
 
     var body: some View {
         NavigationStack {
@@ -41,6 +43,7 @@ struct DevicesView: View {
             .sheet(isPresented: $highlightsOpen) {
                 ReleaseHighlights { highlightsOpen = false }
             }
+            .sheet(isPresented: $writingFeedback) { TesterFeedbackForm(model: testerFeedback) }
             .confirmationDialog(removeTitle(), isPresented: removeDialogBinding(), titleVisibility: .visible) {
                 Button("Remove", role: .destructive) {
                     if let device = deviceToRemove {
@@ -387,6 +390,9 @@ struct DevicesView: View {
                 Label("What’s new", systemImage: "sparkles")
             }
             .accessibilityIdentifier("highlightsReplay")
+            Button { testerFeedback.prepare(); writingFeedback = true } label: {
+                Label("Send feedback", systemImage: "bubble.left")
+            }
         }
     }
 

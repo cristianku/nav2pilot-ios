@@ -168,9 +168,10 @@ final class Nav2PilotUITests: XCTestCase {
         replay.tap()
         let next = app.buttons["highlightsNext"]
         XCTAssertTrue(next.waitForExistence(timeout: 5))
-        next.tap()
-        next.tap()
-        next.tap()
+        for _ in 0..<10 {
+            guard next.exists, next.isHittable else { break }
+            next.tap()
+        }
         XCTAssertTrue(replay.waitForExistence(timeout: 5))
         app.terminate()
         app.launch()

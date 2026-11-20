@@ -60,15 +60,23 @@ struct RootView: View {
     @State private var settingsOpen = false
     @State private var favoritesOpen = false
     @AppStorage("releaseHighlights.seenEdition") private var seenEdition = ""
+    @State private var invite = false
+    @State private var writingFeedback = false
+    @State private var consideredFeedback = false
+    @State private var testerFeedback = TesterFeedback()
 
     var body: some View {
         Group {
             if seenEdition != ReleaseHighlights.edition && viewModel.showSendTabRequest == 0 {
-                ReleaseHighlights { seenEdition = ReleaseHighlights.edition }
+                ReleaseHighlights {
+                    consideredFeedback = true
+                    seenEdition = ReleaseHighlights.edition
+                }
             } else {
                 map
             }
         }
+        .environment(testerFeedback)
     }
 
     private var map: some View {
@@ -83,9 +91,25 @@ struct RootView: View {
         )
         // a shared place or a picked favorite: back to the map
         .onChange(of: viewModel.showSendTabRequest) {
+            invite = false
+            writingFeedback = false
             settingsOpen = false
             favoritesOpen = false
         }
+        .task {
+            guard !consideredFeedback else { return }
+            consideredFeedback = true
+            // Give a cold-start URL or Siri request priority.
+            do { try await Task.sleep(for: .milliseconds(600)) } catch { return }
+            guard viewModel.showSendTabRequest == 0, viewModel.destination == nil, !settingsOpen, !favoritesOpen else { return }
+            invite = testerFeedback.visit()
+        }
+        .alert("How is Nav2Pilot working for you?", isPresented: $invite) {
+            Button("Write feedback") { testerFeedback.prepare(); writingFeedback = true }
+            Button("Maybe later", role: .cancel) {}
+            Button("Don’t ask again") { testerFeedback.stopAsking() }
+        } message: { Text("Tell us what worked or what we could improve. Your message goes straight to the team.") }
+        .sheet(isPresented: $writingFeedback) { TesterFeedbackForm(model: testerFeedback) }
         .sheet(isPresented: $settingsOpen) {
             DevicesView(viewModel: viewModel, onClose: {
                 settingsOpen = false
