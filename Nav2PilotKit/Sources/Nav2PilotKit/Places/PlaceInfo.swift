@@ -9,6 +9,8 @@ public struct PlaceInfo: Equatable {
     public var website: String
     /// What OpenStreetMap says the place is, "shop:furniture" (see PlaceKinds); "" when unknown.
     public var kind: String
+    public var booking = "", description = "", commonsFile = "", wikidata = "", imagePage = ""
+    public var noReservations = false
 
     public init(openingHours: String = "", phone: String = "", website: String = "", kind: String = "") {
         self.openingHours = openingHours
@@ -24,13 +26,24 @@ public struct PlaceInfo: Equatable {
 
     /// From an element's OpenStreetMap tags.
     static func fromTags(_ tags: [String: Any]) -> PlaceInfo {
-        return PlaceInfo(
+        var info = PlaceInfo(
             openingHours: firstTag(tags, ["opening_hours"]),
             // several numbers are separated by ";": the first is the main one
             phone: firstPart(firstTag(tags, ["phone", "contact:phone"])),
             website: webAddress(firstPart(firstTag(tags, ["website", "contact:website", "url"]))),
             kind: PlaceKinds.mainTag(tags)
         )
+        info.noReservations = firstTag(tags, ["reservation"]).lowercased() == "no"
+        if !info.noReservations {
+            info.booking = ["website:reservation","reservation:website","website:booking","reservation:url","booking:website"]
+                .map { webAddress(firstPart(firstTag(tags, [$0]))) }.first { !$0.isEmpty } ?? ""
+        }
+        info.description = String(firstTag(tags, ["description:\(Locale.current.language.languageCode?.identifier ?? "en")","description"]).prefix(900))
+        info.wikidata = firstTag(tags, ["wikidata"])
+        let file = firstTag(tags, ["wikimedia_commons","image"])
+        if file.lowercased().hasPrefix("file:") { info.commonsFile = String(file.dropFirst(5).prefix(250)) }
+        info.imagePage = webAddress(firstTag(tags, ["image"]))
+        return info
     }
 
     /// `text` as an address the browser can open; "" for anything that is not a web page ("javascript:", "tel:").
@@ -39,14 +52,10 @@ public struct PlaceInfo: Equatable {
             return ""
         }
         let lower = text.lowercased()
-        if lower.hasPrefix("https://") || lower.hasPrefix("http://") {
-            return text
-        }
-        // "www.ikea.ch" is often mapped so
-        if !text.contains(":") && text.contains(".") {
-            return "https://" + text
-        }
-        return ""
+        let candidate = lower.hasPrefix("https://") || lower.hasPrefix("http://") ? text :
+            (!text.contains(":") && text.contains(".") ? "https://" + text : "")
+        guard let url = URLComponents(string:candidate), let host = url.host, !host.isEmpty, url.user == nil, url.password == nil else { return "" }
+        return candidate
     }
 
     /// "ikea.com/ch/de/stores/pratteln" for "https://www.ikea.com/ch/de/stores/pratteln/".

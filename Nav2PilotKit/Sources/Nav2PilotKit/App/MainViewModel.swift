@@ -362,7 +362,7 @@ public final class MainViewModel {
         }
         // reads the observed `favorites`, so views showing the heart update when it changes
         for favorite in favorites {
-            if favorite.destination.sameLocationAs(candidate) {
+            if favorite.destination.sameFavorite(as: candidate) {
                 return true
             }
         }
@@ -370,9 +370,10 @@ public final class MainViewModel {
     }
 
     public func toggleFavorite() {
-        guard let current = destination else {
-            return
-        }
+        if let destination { toggleFavorite(destination) }
+    }
+
+    public func toggleFavorite(_ current: Destination) {
         if let existing = favoritesRepository.findByLocation(current) {
             favoritesRepository.remove(existing.id)
         } else {
@@ -825,6 +826,15 @@ public final class MainViewModel {
     }
 
     /// The places of `category` in `area`, the part of the map the user sees (nil until the map has reported it).
+    private var parkingOSM: [Place] = []
+    public func refreshParking() async {
+        guard let parking, placesCategory == .parking, !placesLoading, let area = placesArea else { return }
+        let generation = placesGeneration
+        let official = await parking.places(in: area.limited(to: Self.placesMaxHalfMeters))
+        guard generation == placesGeneration, !Task.isCancelled else { return }
+        places = parking.merge(official, with: parkingOSM)
+    }
+
     /// They stay on the map until hidden or replaced by another category.
     public func showPlaces(_ category: PlaceCategory, in area: MapArea?) async {
         guard let source = placesSource else {
@@ -840,6 +850,7 @@ public final class MainViewModel {
         placesCategory = category
         placesArea = area
         places = []
+        parkingOSM = []
         placesLoading = true
         let limited = area.limited(to: MainViewModel.placesMaxHalfMeters)
         async let osm = source.search(category, in: limited)
@@ -853,6 +864,7 @@ public final class MainViewModel {
         placesLoading = false
         switch result {
         case .success(let fromMap):
+            if category == .parking { parkingOSM = fromMap }
             let found = parking?.merge(official, with: fromMap) ?? fromMap
             if found.isEmpty {
                 placesCategory = nil

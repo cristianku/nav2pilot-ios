@@ -31,6 +31,7 @@ public enum JsonCodec {
             json["website"] = destination.website
         }
         if !destination.locality.isEmpty { json["locality"] = destination.locality }
+        if !destination.parkingID.isEmpty { json["parkingID"] = destination.parkingID }
         return json
     }
 
@@ -44,7 +45,7 @@ public enum JsonCodec {
         if !CoordinateRules.isValid(latitude: latitude, longitude: longitude) {
             return nil
         }
-        return Destination(
+        var destination = Destination(
             latitude: latitude,
             longitude: longitude,
             name: Json.string(json, "name"),
@@ -56,6 +57,8 @@ public enum JsonCodec {
             website: PlaceInfo.webAddress(Json.string(json, "website")),
             locality: Json.string(json, "locality")
         )
+        destination.parkingID = Json.string(json, "parkingID")
+        return destination
     }
 
     public static func favoritesToJson(_ favorites: [Favorite]) -> String {

@@ -14,7 +14,7 @@ let package = Package(
         .library(name: "Nav2PilotKit", targets: ["Nav2PilotKit"]),
     ],
     targets: [
-        .target(name: "Nav2PilotKit"),
+        .target(name: "Nav2PilotKit", resources: [.process("Resources")]),
         .testTarget(name: "Nav2PilotKitTests", dependencies: ["Nav2PilotKit"]),
     ],
     swiftLanguageVersions: [.v5]

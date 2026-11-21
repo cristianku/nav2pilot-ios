@@ -87,7 +87,8 @@ public final class PhotonPlaces {
                 kind = key + ":" + value
             }
             found.append(
-                Place(category: category, latitude: latitude, longitude: longitude, name: name, details: address(properties), kind: kind)
+                Place(category: category, latitude: latitude, longitude: longitude, name: name, details: address(properties), kind: kind,
+                      osmID: ["N":"node","W":"way","R":"relation"][text(properties,"osm_type")].map { $0 + "/" + Json.string(properties,"osm_id") } ?? "")
             )
         }
         let center = area.center()

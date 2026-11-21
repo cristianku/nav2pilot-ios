@@ -1,106 +1,115 @@
 import Foundation
 
-/// The request is city-wide: the selected pin and the phone's position never leave the phone.
+/// Public feeds are shared by visible pins and favorites; never send a saved name or precise coordinates.
 @MainActor public final class BaselParking {
     private let http: HttpClient
-    private var fetched = Date.distantPast
-    private var garages: [Garage] = []
-    private var pending: Task<[Garage], Never>?
-
+    private var cache: [String: (Date, [Garage])] = [:]
+    private var pending: [String: Task<[Garage], Never>] = [:]
+    private var hkDirectory: (Date, [ParkingFeeds.Row])?
     public init(http: HttpClient) { self.http = http }
 
-    public func lookup(_ place: Place) async -> Garage? {
-        guard place.category == .parking, (47.52...47.59).contains(place.latitude),
-              (7.55...7.63).contains(place.longitude) else { return nil }
-        let matches = await load().filter { $0.matches(place) }
+    private func readings(_ area: MapArea) async -> [Garage] {
+        var seen = Set<String>(), result: [Garage] = []
+        for feed in ParkingFeeds.covering(area) {
+            guard !Task.isCancelled else { break }
+            let rows: [Garage]
+            if let (at, old) = cache[feed.key], Date().timeIntervalSince(at) < 60 {
+                rows = old
+            } else if let task = pending[feed.key] { rows = await task.value }
+            else {
+                let task = Task { () -> [Garage] in
+                    do {
+                        return try await feed.load(http) { [self] in
+                            if let (at, rows) = hkDirectory, Date().timeIntervalSince(at) < 86400 { return rows }
+                            let response = try await ParkingFeeds.get(http, ParkingFeeds.hkInfo)
+                            let rows = try ParkingFeeds.rows(response, "results")
+                            hkDirectory = (Date(), rows)
+                            return rows
+                        }
+                    } catch { return cache[feed.key]?.1 ?? [] }
+                }
+                pending[feed.key] = task
+                rows = await task.value
+                cache[feed.key] = (Date(), rows)
+                pending[feed.key] = nil
+            }
+            result += rows.filter { area.contains($0.point) && seen.insert($0.id).inserted }
+        }
+        return result
+    }
+
+    public func lookup(_ place: Place, id: String = "") async -> Garage? {
+        guard place.category == .parking else { return nil }
+        let a = MapArea(south: place.latitude-0.002, west: place.longitude-0.004, north: place.latitude+0.002, east: place.longitude+0.004)
+        let matches = await readings(a).filter { id.isEmpty ? $0.matches(place) : $0.id == id }
         guard matches.count == 1, matches[0].isFresh(at: Date()) else { return nil }
         return matches[0]
     }
 
     func places(in area: MapArea) async -> [Place] {
-        guard area.north >= 47.52, area.south <= 47.59, area.east >= 7.55, area.west <= 7.63 else { return [] }
-        return await load().filter {
-            $0.point.latitude >= area.south && $0.point.latitude <= area.north &&
-                $0.point.longitude >= area.west && $0.point.longitude <= area.east
-        }.map { Place(category: .parking, latitude: $0.point.latitude, longitude: $0.point.longitude, name: $0.title,
-                      details: $0.address, kind: "amenity:parking") }
-    }
-
-    func merge(_ official: [Place], with osm: [Place]) -> [Place] {
-        var remaining = osm
-        let pins = official.map { pin in
-            guard let garage = garages.first(where: { $0.title == pin.name }) else { return pin }
-            let indexes = remaining.indices.filter { garage.matches(remaining[$0]) }
-            guard indexes.count == 1 else { return pin }
-            let other = remaining.remove(at: indexes[0])
-            return Place(category: .parking, latitude: pin.latitude, longitude: pin.longitude, name: pin.name,
-                         details: pin.details, kind: pin.kind, info: other.info, parkingNotes: other.parkingNotes)
-        }
-        return pins + remaining
-    }
-
-    private func load() async -> [Garage] {
-        if Date().timeIntervalSince(fetched) >= 60 {
-            if pending == nil {
-                pending = Task {
-                    let request = HttpRequest(method: "GET", url: "https://data.bs.ch/api/explore/v2.1/catalog/datasets/100088/records?limit=100", timeoutSeconds: 5)
-                    guard let response = try? await http.execute(request), response.isSuccessful(),
-                          let rows = Json.parseObject(response.body)?["results"] as? [[String: Any]] else { return [] }
-                    return rows.compactMap(Garage.init)
-                }
+        let center = area.center()
+        return await readings(area).sorted { RouteShaping.distanceMeters(center, $0.point) < RouteShaping.distanceMeters(center, $1.point) }
+            .prefix(100).map { g in
+                var pin = Place(category: .parking, latitude: g.point.latitude, longitude: g.point.longitude,
+                                name: g.title, details: g.address, kind: "amenity:parking")
+                pin.garage = g
+                return pin
             }
-            garages = await pending?.value ?? []
-            fetched = Date()
-            pending = nil
+    }
+    func merge(_ official: [Place], with osm: [Place]) -> [Place] {
+        var removed = Set<Int>()
+        let pins = official.map { pin -> Place in
+            guard let g = pin.garage else { return pin }
+            let matches = osm.indices.filter { g.matches(osm[$0]) }
+            guard matches.count == 1, let i = matches.first, official.filter({ $0.garage?.matches(osm[i]) == true }).count == 1 else { return pin }
+            removed.insert(i)
+            var merged = Place(category: .parking, latitude: pin.latitude, longitude: pin.longitude, name: pin.name,
+                               details: pin.details, kind: pin.kind, info: osm[i].info, parkingNotes: osm[i].parkingNotes,
+                               capacity: osm[i].capacity, osmID: osm[i].osmID)
+            merged.garage = g
+            return merged
         }
-        return garages
+        return pins + osm.indices.filter { !removed.contains($0) }.map { osm[$0] }
     }
 
-    public struct Garage {
-        public let title: String
-        public let address: String
+    public enum Level { case available, few, full, closed, unknown }
+    public struct Garage: Equatable {
+        public let id, title, address, source, zone: String
         public let published: Date
         let point: LatLng
         let status: String
-        let free: Int?
-        let total: Int?
-
-        init?(_ row: [String: Any]) {
-            guard let title = row["title"] as? String, row["name"] is String,
-                  let geo = row["geo_point_2d"] as? [String: Any],
-                  let lat = Json.double(geo, "lat"), let lon = Json.double(geo, "lon"),
-                  (47.52...47.59).contains(lat), (7.55...7.63).contains(lon),
-                  let published = ISO8601DateFormatter().date(from: Json.string(row, "published")) else { return nil }
-            self.title = title
-            self.address = Json.string(row, "address")
-            self.point = LatLng(latitude: lat, longitude: lon)
-            self.published = published
-            self.status = Json.string(row, "status")
-            self.free = row["free"] as? Int
-            self.total = row["total"] as? Int
+        public let free, total: Int?
+        let age: TimeInterval
+        public func isFresh(at now: Date) -> Bool { (-60...age).contains(now.timeIntervalSince(published)) }
+        public func level(at now: Date) -> Level {
+            guard isFresh(at: now) else { return .unknown }
+            if ["zu","geschlossen","closed"].contains(status) { return .closed }
+            guard ["offen","open"].contains(status), let free, free >= 0 else { return .unknown }
+            if let total, total <= 0 || free > total { return .unknown }
+            if free == 0 { return .full }
+            return free <= 5 || free <= (total ?? 0)/10 ? .few : .available
         }
-
-        func isFresh(at now: Date) -> Bool { (-60...300).contains(now.timeIntervalSince(published)) }
-
+        public var availability: String {
+            switch level(at: Date()) {
+            case .unknown: return "Availability unknown"
+            case .closed: return "Closed"
+            case .full: return "Full"
+            default: return "\(free ?? 0) spaces free"
+            }
+        }
         func matches(_ place: Place) -> Bool {
             guard RouteShaping.distanceMeters(point, LatLng(latitude: place.latitude, longitude: place.longitude)) <= 150 else { return false }
-            func words(_ text: String) -> [String] {
-                text.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init)
-            }
-            func name(_ text: String) -> [String] { words(text).filter { !["parkhaus", "parking", "garage", "basel"].contains($0) } }
-            let pin = name(place.name)
-            if !pin.isEmpty { return pin == name(title) }
-            let street = words(String(place.details.prefix { $0 != "," }))
-            return address.contains(where: \.isNumber) && street == words(address)
+            func words(_ s: String) -> [String] { s.lowercased().split { !$0.isLetter && !$0.isNumber }.map(String.init) }
+            func name(_ s: String) -> [String] { words(s).filter { !["parkhaus","parking","garage","basel","parcheggio"].contains($0) } }
+            let n = name(place.name)
+            if !n.isEmpty { return n == name(title) }
+            let street = String(place.details.prefix { $0 != "," })
+            return street.contains(where: \.isNumber) && words(street) == words(String(address.prefix { $0 != "," }))
         }
-
-        public var availability: String {
-            if status == "zu" || status == "geschlossen" { return "Closed" }
-            guard status == "offen", let free, free >= 0 else { return "Availability unknown" }
-            if let total, total <= 0 || free > total { return "Availability unknown" }
-            if free == 0 { return "Full" }
-            if let total { return "\(free) of \(total) spaces free" }
-            return "\(free) spaces free"
-        }
+    }
+}
+extension MapArea {
+    func contains(_ point: LatLng) -> Bool {
+        point.latitude >= south && point.latitude <= north && point.longitude >= west && point.longitude <= east
     }
 }

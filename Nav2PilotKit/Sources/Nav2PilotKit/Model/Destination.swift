@@ -31,6 +31,12 @@ public struct Destination: Equatable {
     /// Its web page, an http or https address; "" when none.
     public var website: String
     public var locality: String
+    public var parkingID = ""
+
+    public func sameFavorite(as other: Destination) -> Bool {
+        if !parkingID.isEmpty && !other.parkingID.isEmpty { return parkingID == other.parkingID }
+        return sameLocationAs(other)
+    }
 
     public init(
         latitude: Double,

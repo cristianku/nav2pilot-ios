@@ -160,7 +160,8 @@ public final class OverpassPlaces {
                     kind: PlaceKinds.fromTags(tags, category: category),
                     // the opening hours come with the place: the dialog shows them without asking again
                     info: PlaceInfo.fromTags(tags),
-                    parkingNotes: category == .parking ? parkingNotes(tags) : ""
+                    parkingNotes: category == .parking ? parkingNotes(tags) : "",
+                    capacity: Int(Json.string(tags, "capacity")), osmID: Json.string(element, "type") + "/" + Json.string(element, "id")
                 )
             )
         }

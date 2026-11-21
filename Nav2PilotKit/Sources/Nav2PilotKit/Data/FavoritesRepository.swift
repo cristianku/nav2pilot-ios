@@ -58,7 +58,7 @@ public final class FavoritesRepository {
 
     public func findByLocation(_ destination: Destination) -> Favorite? {
         for favorite in favorites {
-            if favorite.destination.sameLocationAs(destination) {
+            if favorite.destination.sameFavorite(as: destination) {
                 return favorite
             }
         }
