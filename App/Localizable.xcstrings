@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "New parking coverage" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Nuova copertura parcheggi" } } } },
+    "Italy: live parking in Verona" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Italia: posti liberi a Verona" } } } },
+    "Tap Parking in Verona to see the spaces reported by AMT3, including at Tribunale, Centro and the station. A gray P means there is no reliable recent count." : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "A Verona tocca Parcheggi per vedere i posti liberi segnalati da AMT3, anche al Tribunale, al Centro e in stazione. La P grigia indica che manca un conteggio recente e affidabile." } } } },
     "Parking on the map" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Parcheggi sulla mappa" } } } },
     "Find a free parking space" : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Trova un posto libero" } } } },
     "Tap Parking below search. Green means spaces available, orange means only a few, and red means full. A gray P has no recent count." : { "localizations" : { "it" : { "stringUnit" : { "state" : "translated", "value" : "Tocca Parcheggi sotto la ricerca. Verde: ci sono posti; arancione: ne restano pochi; rosso: parcheggio pieno. Una P grigia indica che manca un conteggio recente." } } } },

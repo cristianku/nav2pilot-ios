@@ -32,6 +32,9 @@ searches take priority over the tour.
 
 For the next feature release, update the slides in `App/ReleaseHighlights.swift` together with their
 translations in `App/Localizable.xcstrings`. Dismissal is remembered for that build.
+Whenever parking coverage expands, lead the update tour on **both iPhone and Android** with the newly
+supported countries and the actual cities/operators covered. Only announce feeds included in that build.
+Verify the first launch after an update and replay from Settings.
 
 1. **Get your comma token.** Open [jwt.comma.ai](https://jwt.comma.ai), sign in with the account your comma
    device is paired to, and copy the token.

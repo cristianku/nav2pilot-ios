@@ -2,6 +2,17 @@ import XCTest
 @testable import Nav2PilotKit
 
 @MainActor final class BaselParkingTests: XCTestCase {
+    func testVeronaPublicCarsOnlyAndFreshConsistentCounts() async throws {
+        let http = FakeHttpClient()
+        http.respond(200, #"{"Numeri Parcheggi":[{"id":"211","ts":"1795255410","parcheggio":"Tribunale","posti_liberi":"0","posti_totali":"340","parkingNumberOfOccupiedSpaces":"340"},{"id":"216","ts":"1795255410","parcheggio":"Polo Zanotto","posti_liberi":"0","posti_totali":"133","parkingNumberOfOccupiedSpaces":"211"},{"id":"218","ts":"1795255410","parcheggio":"Terminal Bus","posti_liberi":"45","posti_totali":"60"}]}"#)
+        let feeds = ParkingFeeds.covering(MapArea(south:45.42, west:10.98, north:45.45, east:11.01))
+        let rows = try await XCTUnwrap(feeds.first).load(http) { [] }
+        XCTAssertEqual(rows.map(\.id), ["AMT3 Verona:211","AMT3 Verona:216"])
+        let then = Date(timeIntervalSince1970:1795255410)
+        XCTAssertEqual(rows[0].level(at:then), .full)
+        XCTAssertEqual(rows[0].level(at:then.addingTimeInterval(301)), .unknown)
+        XCTAssertEqual(rows[1].level(at:then), .unknown)
+    }
     func testSingaporeResolvesCarsByFacilityIDAndSeparatesFullFromStale() async throws {
         let feed = ParkingFeeds(city: .singapore, lat: 0, lon: 0), http = FakeHttpClient()
         http.respond(200, #"{"items":[{"carpark_data":[{"carpark_number":"A1","update_datetime":"2026-11-20T20:00:00","carpark_info":[{"lot_type":"Y","lots_available":"40"},{"lot_type":"C","lots_available":"2","total_lots":"50"}]}]}]}"#)

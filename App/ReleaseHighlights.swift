@@ -17,6 +17,9 @@ struct ReleaseHighlights: View {
     }
 
     private static let slides = [
+        Slide(label: "New parking coverage", title: "Italy: live parking in Verona",
+              body: "Tap Parking in Verona to see the spaces reported by AMT3, including at Tribunale, Centro and the station. A gray P means there is no reliable recent count.",
+              symbol: "mappin.circle.fill", example: "Verona · AMT3", accent: .mint),
         Slide(label: "Parking on the map", title: "Find a free parking space",
               body: "Tap Parking below search. Green means spaces available, orange means only a few, and red means full. A gray P has no recent count.",
               symbol: "parkingsign", example: "12 spaces free", accent: .mint),
@@ -58,7 +61,7 @@ struct ReleaseHighlights: View {
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 14) {
                                     Group {
-                                        if index == 0 { parkingArt }
+                                        if slide.symbol == "parkingsign" { parkingArt }
                                         else { art(slide, example: false) }
                                     }
                                         .frame(height: proxy.size.height < 460 ? 100 : 180)

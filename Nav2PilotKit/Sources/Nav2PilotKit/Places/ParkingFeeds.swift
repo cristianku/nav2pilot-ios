@@ -6,11 +6,12 @@ import FoundationXML
 struct ParkingFeeds {
     typealias Row = [String: Any]
     typealias Garage = BaselParking.Garage
-    enum City: String { case basel, zurich, stgallen, nantes, italy, asheville, hongkong, singapore, germany }
+    enum City: String { case basel, zurich, stgallen, nantes, italy, verona, asheville, hongkong, singapore, germany }
     let city: City, lat: Int, lon: Int
     var key: String { "\(city.rawValue):\(lat):\(lon)" }
     static let hkInfo = "https://api.data.gov.hk/v1/carpark-info-vacancy?data=info&vehicleTypes=privateCar&lang=en_US"
     private static let regions: [(City, Double, Double, Double, Double)] = [
+        (.verona,45.38,10.92,45.49,11.06),
         (.basel,47.52,7.55,47.59,7.63), (.zurich,47.30,8.44,47.45,8.64), (.stgallen,47.37,9.27,47.48,9.46),
         (.nantes,47.10,-1.76,47.35,-1.40), (.italy,46.19,10.35,47.10,12.52), (.asheville,35.54,-82.62,35.65,-82.48),
         (.hongkong,22.14,113.82,22.57,114.45), (.singapore,1.20,103.60,1.48,104.10), (.germany,47.27,5.86,55.06,15.05)
@@ -40,6 +41,7 @@ struct ParkingFeeds {
         return json
     }
     private static let sg = directory("singapore"), zh = directory("zurich")
+    private static let vr = directory("verona")
     func load(_ http: HttpClient, directoryHK: () async throws -> [Row]) async throws -> [Garage] {
         let iso = ISO8601DateFormatter()
         let formatter = DateFormatter()
@@ -55,6 +57,20 @@ struct ParkingFeeds {
                           point:LatLng(latitude:lat,longitude:lon),status:status.lowercased(),free:free,total:total,age:age)
         }
         switch city {
+        case .verona:
+            return try await rows("https://api.amt3.it/", "Numeri Parcheggi").compactMap { r in
+                let id = text(r,"id")
+                guard let d = Self.vr[id], d.count == 3 else { return nil }
+                let at = Int64(text(r,"ts")).flatMap { (1...4102444800).contains($0) ? Date(timeIntervalSince1970: Double($0)) : nil }
+                let total = int(r,"posti_totali"), occupied = int(r,"parkingNumberOfOccupiedSpaces")
+                let free = int(r,"posti_liberi").flatMap { n -> Int? in
+                    guard let total, total > 0, (0...total).contains(n),
+                          Json.isNull(r,"parkingNumberOfOccupiedSpaces") || occupied == total - n else { return nil }
+                    return n
+                }
+                return g("AMT3 Verona", "Europe/Rome", id, text(r,"parcheggio"), d[2] as? String ?? "",
+                         d[0] as? Double, d[1] as? Double, at, "open", free, total, 300)
+            }
         case .basel, .stgallen, .nantes:
             let fields: (String,String,String,String,String,String,String,String,String,String)
             switch city {
