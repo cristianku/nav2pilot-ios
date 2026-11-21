@@ -161,7 +161,8 @@ public final class OverpassPlaces {
                     // the opening hours come with the place: the dialog shows them without asking again
                     info: PlaceInfo.fromTags(tags),
                     parkingNotes: category == .parking ? parkingNotes(tags) : "",
-                    capacity: Int(Json.string(tags, "capacity")), osmID: Json.string(element, "type") + "/" + Json.string(element, "id")
+                    capacity: Int(Json.string(tags, "capacity")), osmID: Json.string(element, "type") + "/" + Json.string(element, "id"),
+                    parkingStructure: category == .parking ? ParkingStructure(parking:text(tags,"parking"),covered:text(tags,"covered")) : .unknown
                 )
             )
         }
@@ -184,8 +185,10 @@ public final class OverpassPlaces {
     }
 
     private static func parkingNotes(_ tags: [String: Any]) -> String {
-        let structure = ["underground": "Underground", "multi-storey": "Multi-storey", "surface": "Outdoor"][text(tags, "parking")]
-        let covered = text(tags, "covered") == "yes" ? "Covered" : nil
+        let parking=text(tags,"parking")
+        let structure = ["underground": "Underground", "multi-storey": "Multi-storey"][parking]
+        let kind=ParkingStructure(parking:parking,covered:text(tags,"covered"))
+        let covered = kind == .covered ? "Covered" : (kind == .outdoor ? "Outdoor" : nil)
         let fee = ["yes": "Paid parking", "no": "Free parking"][text(tags, "fee")]
         return [structure ?? covered, fee].compactMap { $0 }.joined(separator: " · ")
     }

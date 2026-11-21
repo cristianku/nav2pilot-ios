@@ -255,7 +255,8 @@ struct NavMapView: UIViewRepresentable {
             }
             let attrs: [NSAttributedString.Key:Any] = [.font:UIFont.boldSystemFont(ofSize:14),.foregroundColor:UIColor.white]
             let label = text as NSString, size = label.size(withAttributes:attrs)
-            let width = max(29, ceil(size.width)+16), bounds = CGRect(x:0,y:0,width:width,height:30)
+            let extra:CGFloat = pin.structure == .unknown ? 0 : 16
+            let width = max(29, ceil(size.width)+16+extra), bounds = CGRect(x:0,y:0,width:width,height:30)
             view.image = UIGraphicsImageRenderer(size:bounds.size).image { _ in
                 (selected ? UIColor.black : UIColor.white).setFill()
                 UIBezierPath(roundedRect:bounds,cornerRadius:15).fill()
@@ -264,11 +265,17 @@ struct NavMapView: UIViewRepresentable {
                 level.badgeColor.setFill()
                 let inset: CGFloat = selected ? 4 : 2
                 UIBezierPath(roundedRect:bounds.insetBy(dx:inset,dy:inset),cornerRadius:12).fill()
-                label.draw(at:CGPoint(x:(width-size.width)/2,y:(30-size.height)/2),withAttributes:attrs)
+                if extra > 0 {
+                    let symbol = pin.structure == .covered ? "house" : "sun.max"
+                    UIImage(systemName:symbol)?.withTintColor(.white,renderingMode:.alwaysOriginal)
+                        .draw(in:CGRect(x:7,y:8,width:14,height:14))
+                }
+                label.draw(at:CGPoint(x:(width-size.width+extra)/2,y:(30-size.height)/2),withAttributes:attrs)
             }
             view.displayPriority = level == .unknown ? .defaultHigh : .required
             view.zPriority = selected ? .max : (level == .unknown ? .defaultUnselected : .defaultSelected)
-            view.accessibilityLabel = "\(pin.title ?? ""), \(text)"
+            let kind = pin.structure == .covered ? "Covered" : (pin.structure == .outdoor ? "Outdoor" : "")
+            view.accessibilityLabel = [pin.title ?? "",kind,text].filter { !$0.isEmpty }.joined(separator:", ")
         }
 
         func updatePlaces(_ map: MKMapView, places: [Place], minute: Int) {
@@ -291,6 +298,7 @@ struct NavMapView: UIViewRepresentable {
                 annotation.index = index
                 annotation.category = place.category
                 annotation.garage = place.garage
+                annotation.structure = place.parkingStructure
                 map.addAnnotation(annotation)
             }
         }
@@ -518,6 +526,7 @@ final class Pin: MKPointAnnotation {
 
 /// A point of interest, with its index in the view model's list.
 final class PlaceAnnotation: MKPointAnnotation {
+    var structure = ParkingStructure.unknown
     var garage: BaselParking.Garage?
     var index = 0
     var category = PlaceCategory.fuel

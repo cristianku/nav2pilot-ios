@@ -79,6 +79,14 @@ public enum PlaceCategory: String, CaseIterable, Identifiable {
 }
 
 /// A point of interest from OpenStreetMap, drawn on the map.
+public enum ParkingStructure: String {
+    case covered, outdoor, unknown
+    public init(parking: String, covered: String) {
+        if covered == "yes" || ["underground","multi-storey","carports","garage_boxes"].contains(parking) { self = .covered }
+        else if covered == "no" || ["surface","rooftop","street_side","layby","lane","shoulder"].contains(parking) { self = .outdoor }
+        else { self = .unknown }
+    }
+}
 public struct Place: Equatable {
     public let category: PlaceCategory
     public let latitude: Double
@@ -94,6 +102,7 @@ public struct Place: Equatable {
     public var garage: BaselParking.Garage?
     public var capacity: Int?
     public var osmID: String
+    public var parkingStructure: ParkingStructure
 
     public init(
         category: PlaceCategory,
@@ -103,7 +112,7 @@ public struct Place: Equatable {
         details: String,
         kind: String = "",
         info: PlaceInfo? = nil,
-        parkingNotes: String = "", capacity: Int? = nil, osmID: String = ""
+        parkingNotes: String = "", capacity: Int? = nil, osmID: String = "", parkingStructure: ParkingStructure = .unknown
     ) {
         self.category = category
         self.latitude = latitude
@@ -115,6 +124,7 @@ public struct Place: Equatable {
         self.parkingNotes = parkingNotes
         self.capacity = capacity
         self.osmID = osmID
+        self.parkingStructure = parkingStructure
     }
 
     public func toDestination() -> Destination {

@@ -53,6 +53,7 @@ import Foundation
                 var pin = Place(category: .parking, latitude: g.point.latitude, longitude: g.point.longitude,
                                 name: g.title, details: g.address, kind: "amenity:parking")
                 pin.garage = g
+                pin.parkingStructure = g.structure
                 return pin
             }
     }
@@ -65,7 +66,8 @@ import Foundation
             removed.insert(i)
             var merged = Place(category: .parking, latitude: pin.latitude, longitude: pin.longitude, name: pin.name,
                                details: pin.details, kind: pin.kind, info: osm[i].info, parkingNotes: osm[i].parkingNotes,
-                               capacity: osm[i].capacity, osmID: osm[i].osmID)
+                               capacity: osm[i].capacity, osmID: osm[i].osmID,
+                               parkingStructure: pin.parkingStructure == .unknown ? osm[i].parkingStructure : pin.parkingStructure)
             merged.garage = g
             return merged
         }
@@ -89,6 +91,7 @@ import Foundation
             if free == 0 { return .full }
             return free <= 5 || free <= (total ?? 0)/10 ? .few : .available
         }
+        public var structure: ParkingStructure = .unknown
         public var availability: String {
             switch level(at: Date()) {
             case .unknown: return "Availability unknown"
