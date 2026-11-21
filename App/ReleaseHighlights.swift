@@ -1,8 +1,8 @@
 import SwiftUI
+import Nav2PilotKit
 
-/// Change the edition id with the slides, not on every build of the same release.
 struct ReleaseHighlights: View {
-    static let edition = "places-and-feedback-2"
+    static let edition = "parking-cards-" + (Bundle.main.object(forInfoDictionaryKey:"CFBundleVersion") as? String ?? "1")
     let close: () -> Void
     @State private var page = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -17,12 +17,18 @@ struct ReleaseHighlights: View {
     }
 
     private static let slides = [
+        Slide(label: "Parking on the map", title: "Find a free parking space",
+              body: "Tap Parking below search. Green means spaces available, orange means only a few, and red means full. A gray P has no recent count.",
+              symbol: "parkingsign", example: "12 spaces free", accent: .mint),
+        Slide(label: "Favorites", title: "Your car park at a glance",
+              body: "Tap a pin, then the heart to save the place without changing your route. Your favorite car parks show recent free-space counts right in the list.",
+              symbol: "heart.fill", example: "12 spaces free", accent: .mint),
         Slide(label: "On the map", title: "Take a look before you go",
-              body: "Tap a pin to see what’s there. Compare another place or close the card: your route stays as it is until you choose a destination or add a stop.",
+              body: "Pull up the handle for opening hours, a photo and visitor reviews when available. Pull down to return to the map. Your route stays the same.",
               symbol: "mappin", example: "Rebgasse", accent: Color(red: 0.40, green: 0.91, blue: 0.89)),
-        Slide(label: "Parking in Basel", title: "Is there room to park?",
-              body: "Tap a participating garage in Basel to see how many spaces are free and when the count was updated. If there’s no recent reading, the app tells you.",
-              symbol: "parkingsign", example: "12 spaces free", accent: Color(red: 0.53, green: 0.93, blue: 0.82)),
+        Slide(label: "Restaurants", title: "Book from the place card",
+              body: "When a restaurant lists a booking link, tap Book a table to open it. If only a website or phone number is listed, you can visit the site or call instead.",
+              symbol: "fork.knife", example: "Book a table", accent: .orange),
         Slide(label: "In search", title: "Your usual places, one tap away",
               body: "Save Home or Work in a destination’s details. Open search for them and your recently sent places. You can also prepare a search with Siri or Shortcuts.",
               symbol: "heart.fill", example: "Home  ·  Work", accent: Color(red: 0.65, green: 0.81, blue: 1)),
@@ -51,7 +57,10 @@ struct ReleaseHighlights: View {
                         GeometryReader { available in
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 14) {
-                                    art(slide, example: index == 1)
+                                    Group {
+                                        if index == 0 { parkingArt }
+                                        else { art(slide, example: false) }
+                                    }
                                         .frame(height: proxy.size.height < 460 ? 100 : 180)
                                     HStack {
                                         Text(slide.label).font(.subheadline.bold()).foregroundStyle(Theme.brand)
@@ -91,6 +100,30 @@ struct ReleaseHighlights: View {
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
             page = min(max(page + step, 0), Self.slides.count - 1)
         }
+    }
+
+    private var parkingArt: some View {
+        GeometryReader { geo in
+            ZStack {
+                Image("ParkingHarbour").resizable().scaledToFill().frame(width:geo.size.width,height:geo.size.height).clipped()
+                ForEach(0..<4,id:\.self) { i in
+                    let labels = ["P 12","P 3","P 0","P"]
+                    let colors: [BaselParking.Level] = [.available,.few,.full,.unknown]
+                    Text(verbatim:labels[i]).font(i == 0 ? .title3.bold():.caption.bold())
+                        .foregroundStyle(.white).padding(.vertical,5).padding(.horizontal,10)
+                        .background(Color(uiColor: colors[i].badgeColor),in:Capsule())
+                        .overlay(Capsule().stroke(.white,lineWidth:2)).shadow(radius:2)
+                        .position(x:geo.size.width * [0.30,0.70,0.55,0.20][i], y:geo.size.height * [0.44,0.50,0.79,0.82][i])
+                }
+            }
+            .overlay(alignment:.topTrailing) {
+                Label("Parking",systemImage:"parkingsign").font(.caption.bold()).foregroundStyle(.white)
+                    .padding(8).background(Theme.brand,in:Capsule()).padding(10)
+            }
+            .overlay(alignment:.topLeading) {
+                Text("Example").font(.caption2.bold()).foregroundStyle(.white).padding(6).background(.black.opacity(0.7),in:Capsule()).padding(10)
+            }
+        }.clipShape(RoundedRectangle(cornerRadius:24)).accessibilityHidden(true)
     }
 
     private func art(_ slide: Slide, example: Bool) -> some View {

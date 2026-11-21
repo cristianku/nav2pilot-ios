@@ -33,7 +33,8 @@ struct FavoritesView: View {
                         Button {
                             viewModel.selectFavorite(favorite)
                         } label: {
-                            FavoriteRow(destination: favorite.destination)
+                            FavoriteRow(destination: favorite.destination, parking:viewModel.parking,
+                                        seed:viewModel.places.first { $0.toDestination().sameFavorite(as:favorite.destination) }?.garage)
                         }
                         .buttonStyle(.plain)
                         Spacer(minLength: 0)
@@ -88,6 +89,11 @@ struct FavoritesView: View {
 
 private struct FavoriteRow: View {
     let destination: Destination
+    let parking: BaselParking?
+    let seed: BaselParking.Garage?
+    @State private var reading: BaselParking.Garage?
+    @State private var loaded = false
+    @Environment(\.scenePhase) private var phase
 
     var body: some View {
         HStack(spacing: 14) {
@@ -97,6 +103,7 @@ private struct FavoriteRow: View {
                 Text(destination.displayName())
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.primary)
+                if destination.kind == "amenity:parking" { ParkingCountBadge(garage:loaded ? reading:seed) }
                 if !destination.details.isEmpty {
                     Text(destination.details)
                         .font(.caption)
@@ -106,5 +113,14 @@ private struct FavoriteRow: View {
             .multilineTextAlignment(.leading)
         }
         .contentShape(Rectangle())
+        .task(id:phase) {
+            guard phase == .active, destination.kind == "amenity:parking", let parking else { return }
+            let pin = Place(category:.parking,latitude:destination.latitude,longitude:destination.longitude,name:destination.name,details:destination.details)
+            while !Task.isCancelled {
+                reading = await parking.lookup(pin,id:destination.parkingID)
+                loaded = true
+                do { try await Task.sleep(for:.seconds(60)) } catch { return }
+            }
+        }
     }
 }

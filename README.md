@@ -49,7 +49,13 @@ Tap a category below the search field to show places on the visible map. Swipe t
 tap the active category again to hide them or **Search this area** after moving the map.
 
 Tap a pin to inspect it, or another pin to compare. Only **Go here** and **Add as stop** change the itinerary.
-For covered garages in Basel, the card shows availability and the time of the reading when known.
+Parking pins show recent counts where a participating provider publishes them: green for availability,
+orange for five or fewer spaces or at most 10% of capacity, red for full. Gray means no confirmed count;
+× means closed. Save a pin with its heart to see live occupancy in Favorites. Drag the card up to see
+hours, contacts, credited Wikimedia photos and Mangrove reviews when available. Restaurant cards can
+open a dedicated booking page or the listed phone number or website.
+Coverage, attribution and the Zurich/Singapore directory regeneration script are documented
+[alongside the Android feeds](https://github.com/cristianku/nav2pilot#points-of-interest).
 Source: [Parkhäuser Basel-Stadt](https://data.bs.ch/explore/dataset/100088/), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 Unidentified garages and stale readings show no count.
 

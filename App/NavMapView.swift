@@ -21,6 +21,7 @@ struct MapContent: Equatable {
     /// Points of interest from OpenStreetMap, drawn under the destination and the stops.
     var places: [Place] = []
     var preview: Place?
+    var parkingMinute: Int = 0
 }
 
 /// The full-screen map: Apple Maps for everybody (free, no key), with Mapbox Streets tiles on top when the user has a
@@ -77,7 +78,7 @@ struct NavMapView: UIViewRepresentable {
         coordinator.updateBaseMap(map, mapboxToken: mapboxToken, dark: colorScheme == .dark)
         coordinator.updateRoutes(map, routes: content.routes)
         coordinator.updatePins(map, destination: content.destination, stops: content.stops)
-        coordinator.updatePlaces(map, places: content.places)
+        coordinator.updatePlaces(map, places: content.places, minute: content.parkingMinute)
         coordinator.highlight(map, place: content.preview)
         coordinator.moveCamera(map, content: content, insets: insets)
     }
@@ -102,6 +103,7 @@ struct NavMapView: UIViewRepresentable {
         private var drawnPinsKey = ""
         private var drawnPlaces: [Place] = []
         private var preview: Place?
+        private var parkingMinute = 0
         private var fitted: FitKey?
         private var recenterSeen = 0
         private var centeredOnce = false
@@ -229,6 +231,7 @@ struct NavMapView: UIViewRepresentable {
             guard preview != place else { return }
             preview = place
             for pin in map.annotations.compactMap({ $0 as? PlaceAnnotation }) {
+                if pin.category == .parking, let v = map.view(for: pin) { styleParking(v, pin); continue }
                 if let marker = map.view(for: pin) as? MKMarkerAnnotationView {
                     marker.markerTintColor = placeColor(pin)
                 }
@@ -241,10 +244,38 @@ struct NavMapView: UIViewRepresentable {
             return routeColor
         }
 
-        func updatePlaces(_ map: MKMapView, places: [Place]) {
-            if places == drawnPlaces {
+        private func styleParking(_ view: MKAnnotationView, _ pin: PlaceAnnotation) {
+            let level = pin.garage?.level(at: Date()) ?? .unknown
+            let selected = preview?.latitude == pin.coordinate.latitude && preview?.longitude == pin.coordinate.longitude && preview?.name == pin.title
+            let text: String
+            switch level {
+            case .available,.few,.full: text = "P \(pin.garage?.free ?? 0)"
+            case .closed: text = "P ×"
+            case .unknown: text = "P"
+            }
+            let attrs: [NSAttributedString.Key:Any] = [.font:UIFont.boldSystemFont(ofSize:14),.foregroundColor:UIColor.white]
+            let label = text as NSString, size = label.size(withAttributes:attrs)
+            let width = max(29, ceil(size.width)+16), bounds = CGRect(x:0,y:0,width:width,height:30)
+            view.image = UIGraphicsImageRenderer(size:bounds.size).image { _ in
+                (selected ? UIColor.black : UIColor.white).setFill()
+                UIBezierPath(roundedRect:bounds,cornerRadius:15).fill()
+                UIColor.white.setFill()
+                UIBezierPath(roundedRect:bounds.insetBy(dx:2,dy:2),cornerRadius:14).fill()
+                level.badgeColor.setFill()
+                let inset: CGFloat = selected ? 4 : 2
+                UIBezierPath(roundedRect:bounds.insetBy(dx:inset,dy:inset),cornerRadius:12).fill()
+                label.draw(at:CGPoint(x:(width-size.width)/2,y:(30-size.height)/2),withAttributes:attrs)
+            }
+            view.displayPriority = level == .unknown ? .defaultHigh : .required
+            view.zPriority = selected ? .max : (level == .unknown ? .defaultUnselected : .defaultSelected)
+            view.accessibilityLabel = "\(pin.title ?? ""), \(text)"
+        }
+
+        func updatePlaces(_ map: MKMapView, places: [Place], minute: Int) {
+            if places == drawnPlaces && minute == parkingMinute {
                 return
             }
+            parkingMinute = minute
             drawnPlaces = places
             var old: [MKAnnotation] = []
             for annotation in map.annotations {
@@ -259,6 +290,7 @@ struct NavMapView: UIViewRepresentable {
                 annotation.title = place.name
                 annotation.index = index
                 annotation.category = place.category
+                annotation.garage = place.garage
                 map.addAnnotation(annotation)
             }
         }
@@ -291,6 +323,13 @@ struct NavMapView: UIViewRepresentable {
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
             if let place = annotation as? PlaceAnnotation {
+                if place.category == .parking {
+                    let v = mapView.dequeueReusableAnnotationView(withIdentifier:"parkingBadge") ?? MKAnnotationView(annotation:place,reuseIdentifier:"parkingBadge")
+                    v.annotation = place
+                    v.canShowCallout = false
+                    styleParking(v, place)
+                    return v
+                }
                 let view = mapView.dequeueReusableAnnotationView(withIdentifier: Coordinator.placeReuseId, for: annotation)
                 guard let marker = view as? MKMarkerAnnotationView else {
                     return view
@@ -479,8 +518,20 @@ final class Pin: MKPointAnnotation {
 
 /// A point of interest, with its index in the view model's list.
 final class PlaceAnnotation: MKPointAnnotation {
+    var garage: BaselParking.Garage?
     var index = 0
     var category = PlaceCategory.fuel
+}
+
+extension BaselParking.Level {
+    var badgeColor: UIColor {
+        switch self {
+        case .available: return UIColor(red:0.086,green:0.45,blue:0.28,alpha:1)
+        case .few: return UIColor(red:0.67,green:0.29,blue:0.03,alpha:1)
+        case .full: return UIColor(red:0.72,green:0.16,blue:0.22,alpha:1)
+        case .unknown,.closed: return .darkGray
+        }
+    }
 }
 
 extension PlaceCategory {

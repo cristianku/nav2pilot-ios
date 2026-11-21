@@ -15,6 +15,8 @@ struct MapScreenView: View {
     @State private var query = ""
     @State private var panelSize = CGSize.zero
     @State private var previewHeight: CGFloat = 0
+    @State private var parkingMinute = 0
+    @Environment(\.scenePhase) private var scenePhase
     @FocusState private var searchFocused: Bool
     // the part of the map in view, where the places are looked for; a box, so a map move does not redraw the screen
     @State private var mapArea = MapAreaBox()
@@ -45,7 +47,7 @@ struct MapScreenView: View {
             origin: viewModel.origin,
             recenterRequest: viewModel.recenterRequest,
             places: viewModel.places,
-            preview: tappedPlace
+            preview: tappedPlace, parkingMinute: parkingMinute
         )
         let token = mapboxToken()
         GeometryReader { geometry in
@@ -97,7 +99,11 @@ struct MapScreenView: View {
                 }
                 if let place = tappedPlace {
                     let same = viewModel.destination?.sameLocationAs(place.toDestination()) == true
-                    PlacePreviewCard(place: place, parking: viewModel.parking,
+                    let current = viewModel.places.first { $0.latitude == place.latitude && $0.longitude == place.longitude && $0.name == place.name }
+                    PlacePreviewCard(place: current ?? place, reading: current?.garage,
+                                     saved: viewModel.isFavorite((current ?? place).toDestination()),
+                                     toggle: { viewModel.toggleFavorite((current ?? place).toDestination()) },
+                                     height: geometry.size.height,
                                      canGo: !same, canAdd: !same && viewModel.destination != nil && viewModel.stops.count < MainViewModel.maxStops,
                                      dismiss: { tappedPlace = nil },
                                      go: { tappedPlace = nil; viewModel.choosePlace(place) },
@@ -107,13 +113,21 @@ struct MapScreenView: View {
                                      })
                         .id("\(place.latitude),\(place.longitude),\(place.name)")
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
-                        .frame(maxWidth: wide ? panelWidth : 520, maxHeight: geometry.size.height * 0.65, alignment: .bottom)
+                        .frame(maxWidth: wide ? panelWidth : 520, alignment: .bottom)
                         .padding(8)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: wide ? .bottomLeading : .bottom)
                 }
             }
         }
         .onChange(of: viewModel.placesCategory) { tappedPlace = nil; searchAreaOffered = false }
+        .task(id: scenePhase == .active && viewModel.placesCategory == .parking && !viewModel.placesLoading) {
+            guard scenePhase == .active, viewModel.placesCategory == .parking, !viewModel.placesLoading else { return }
+            while !Task.isCancelled {
+                await viewModel.refreshParking()
+                parkingMinute = Int(Date().timeIntervalSince1970 / 60)
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+            }
+        }
         .onChange(of: viewModel.showSendTabRequest) { tappedPlace = nil }
         .onChange(of: viewModel.voiceRequest, initial: true) {
             guard viewModel.voiceRequest != seenVoice else { return }
@@ -299,6 +313,7 @@ struct MapScreenView: View {
                 }
             }
             if secondRowVisible() {
+                HStack(spacing: 6) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack {
                         ForEach(PlaceCategory.allCases) { category in
@@ -308,7 +323,7 @@ struct MapScreenView: View {
                                 if active { viewModel.hidePlaces() }
                                 else { Task { await viewModel.showPlaces(category, in: mapArea.value) } }
                             } label: {
-                                Label(category.label, systemImage: category.symbolName)
+                                Label(LocalizedStringKey(category.label), systemImage: category.symbolName)
                                     .font(.subheadline.weight(.semibold))
                                     .padding(.horizontal, 12).frame(minHeight: 42)
                                     .foregroundStyle(active ? Theme.onAccent : Theme.brand)
@@ -318,6 +333,18 @@ struct MapScreenView: View {
                             .accessibilityAddTraits(active ? .isSelected : [])
                         }
                     }
+                }
+                Menu {
+                    ForEach(PlaceCategory.allCases) { category in
+                        Button {
+                            tappedPlace = nil
+                            Task { await viewModel.showPlaces(category, in: mapArea.value) }
+                        } label: { Label(LocalizedStringKey(category.label), systemImage: viewModel.placesCategory == category ? "checkmark" : category.symbolName) }
+                    }
+                } label: {
+                    Image(systemName:"square.grid.2x2.fill").foregroundStyle(Theme.brand).frame(width:52,height:44)
+                        .background(Theme.card,in:Capsule())
+                }.accessibilityLabel("Points of interest")
                 }
                 if searchAreaOffered, !viewModel.placesLoading, let category = viewModel.placesCategory {
                     Button("Search this area") {
@@ -760,6 +787,9 @@ private struct DestinationPanel: View {
                 }
 
                 // needed to decide whether to send it, so never folded away
+                if PlaceKinds.category(destination.kind) == .restaurant {
+                    RestaurantLinks(info: viewModel.info(for: destination))
+                }
                 if destination.approximate {
                     Label("Approximate: the link only had the map centre. Check the pin on the map.", systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
@@ -1008,55 +1038,159 @@ private struct DestinationPanel: View {
 
 private struct PlacePreviewCard: View {
     let place: Place
-    let parking: BaselParking?
+    let reading: BaselParking.Garage?
+    let saved: Bool
+    let toggle: () -> Void
+    let height: CGFloat
     let canGo: Bool
     let canAdd: Bool
     let dismiss: () -> Void
     let go: () -> Void
     let add: () -> Void
-    @State private var garage: BaselParking.Garage?
+    @State private var expanded = false
+    @State private var compactHeight: CGFloat = 0
+    @GestureState private var drag: CGFloat = 0
+    @State private var extraInfo: PlaceInfo?
+    private var info: PlaceInfo? { place.info ?? extraInfo }
 
     var body: some View {
-        ScrollView {
+        let target = height * 0.84
+        let compact = min(compactHeight == 0 ? height * 0.42 : compactHeight, height * 0.60)
+        VStack(spacing:0) {
+            Button { withAnimation(.easeOut(duration:0.18)) { expanded.toggle() } } label: {
+                Capsule().fill(Color.secondary).frame(width:42,height:5)
+                    .frame(maxWidth:.infinity,minHeight:42).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityLabel(expanded ? "Collapse place details" : "Expand place details")
+            .highPriorityGesture(DragGesture(minimumDistance:8)
+                .updating($drag) { value, state, _ in state = -value.translation.height }
+                .onEnded { value in
+                    if abs(value.translation.height) > 18 {
+                        withAnimation(.easeOut(duration:0.18)) { expanded = value.translation.height < 0 }
+                    }
+                })
+            ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     let fallback = place.name == place.category.singular && !place.details.isEmpty
                         ? "\(place.name) · \(place.details.prefix { $0 != "," })" : place.name
-                    Label(garage?.title ?? fallback, systemImage: place.category.symbolName)
+                    Label(reading?.title ?? fallback, systemImage: place.category.symbolName)
                         .font(.headline)
                     Spacer()
+                    Button(action:toggle) { Image(systemName:saved ? "heart.fill":"heart").frame(width:44,height:44) }
+                        .accessibilityLabel(saved ? "Remove from favorites":"Add to favorites")
                     Button(action: dismiss) {
                         Image(systemName: "xmark").frame(width: 44, height: 44)
                     }.accessibilityLabel("Close place preview")
                 }
-                let description = MapScreenView.placeDescription(place, includeHours: garage == nil)
-                if let garage, !garage.address.isEmpty && !description.contains(garage.address) { Text(garage.address) }
+                let description = MapScreenView.placeDescription(place, includeHours: reading == nil)
+                if let garage = reading, !garage.address.isEmpty && !description.contains(garage.address) { Text(garage.address) }
                 if !description.isEmpty { Text(description) }
-                if place.details.isEmpty && garage == nil { Text(place.toDestination().coordinatesText()).font(.caption) }
+                if place.details.isEmpty && reading == nil { Text(place.toDestination().coordinatesText()).font(.caption) }
+                if place.category == .restaurant, let info { RestaurantLinks(info: info) }
                 if !place.parkingNotes.isEmpty { Text(place.parkingNotes) }
                 if place.category == .parking {
-                    Text(garage?.availability ?? "Availability unknown").bold()
-                    if let garage {
-                        Text("Parkhäuser Basel-Stadt · \(garage.published.formatted(date: .omitted, time: .shortened))")
-                            .font(.caption)
+                    ParkingCountBadge(garage:reading)
+                    if let total = reading?.total ?? place.capacity, total > 0 { Text("Total spaces: \(total)") }
+                    if let garage = reading {
+                        Text(garage.isFresh(at:Date()) ? "\(garage.source) · \(garage.published.formatted(Date.FormatStyle(date:.omitted,time:.shortened,timeZone:TimeZone(identifier:garage.zone) ?? .current)))" : garage.source)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 }
                 HStack {
                     if canGo { Button("Go here", action: go).buttonStyle(.borderedProminent) }
                     if canAdd { Button("Add as stop", action: add).buttonStyle(.bordered) }
                 }
-            }.padding(14)
+                if expanded {
+                    Divider()
+                    Text("Place details").font(.headline)
+                    if let info {
+                        if !info.description.isEmpty { Text(info.description) }
+                        PlaceInfoBlock(info:info)
+                    }
+                    VenueMediaView(place:place, info:info)
+                }
+            }.padding(.horizontal,14).padding(.bottom,14)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if !expanded { compactHeight = $0 + 42 } }
+            }.scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .fixedSize(horizontal: false, vertical: true)
+        .frame(height: min(target,max(compact,(expanded ? target : compact) + drag)))
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 20))
         .shadow(radius: 6)
-        .task {
-            guard place.category == .parking else { return }
-            while !Task.isCancelled {
-                garage = await parking?.lookup(place)
-                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+        .task(id: expanded || place.category == .restaurant) {
+            if (expanded || place.category == .restaurant) && info == nil { extraInfo = await PlaceDetails.tags(place) }
+        }
+    }
+}
+
+struct ParkingCountBadge: View {
+    let garage: BaselParking.Garage?
+    var body: some View {
+        TimelineView(.everyMinute) { t in
+            let level = garage?.level(at:t.date) ?? .unknown
+            Group {
+                switch level {
+                case .available: Text("Free spaces: \(garage?.free ?? 0)")
+                case .few: Text("Few spaces left: \(garage?.free ?? 0)")
+                case .full: Text("Full · 0 free spaces")
+                case .closed: Text("Closed")
+                case .unknown: Text("Live availability unavailable")
+                }
+            }.font(.caption.bold()).foregroundStyle(.white).padding(.horizontal,9).padding(.vertical,4)
+                .background(Color(uiColor:level.badgeColor),in:RoundedRectangle(cornerRadius:8))
+        }
+    }
+}
+
+private struct RestaurantLinks: View {
+    let info: PlaceInfo
+    var body: some View {
+        VStack(alignment:.leading,spacing:5) {
+            if info.noReservations { Text("This restaurant does not take reservations.").font(.caption) }
+            if !info.booking.isEmpty, let url = URL(string:info.booking) {
+                Link("Book a table",destination:url).buttonStyle(.bordered)
             }
+            HStack {
+                if let url = URL(string:PlaceInfo.phoneLink(info.phone)), !info.phone.isEmpty { Link("Call",destination:url) }
+                if !info.website.isEmpty, info.website != info.booking, let url = URL(string:info.website) {
+                    Link("Restaurant website",destination:url)
+                }
+            }
+        }
+    }
+}
+
+private struct VenueMediaView: View {
+    let place: Place
+    let info: PlaceInfo?
+    @State private var photo: VenuePhoto?
+    @State private var reviews: [VenueReview]?
+    @State private var failed = false
+    @State private var attempt = 0
+    var body: some View {
+        VStack(alignment:.leading,spacing:8) {
+            Text("Photo").font(.subheadline.bold())
+            if let photo {
+                AsyncImage(url:photo.thumbnail) { image in image.resizable().scaledToFit() } placeholder: { Color.clear }
+                    .frame(maxHeight:200)
+                Link("\(photo.credit) · \(photo.license) · Wikimedia Commons",destination:photo.page).font(.caption)
+            } else if let page = info?.imagePage, !page.isEmpty, let url = URL(string:page) {
+                Link("Open the photo at its source",destination:url)
+            } else { Text("No photo available for this place.").font(.caption) }
+            Text("Visitor reviews").font(.subheadline.bold())
+            if failed { Button("Retry loading reviews") { attempt += 1 } }
+            else if let reviews {
+                if reviews.isEmpty { Text("No Mangrove reviews found for this place.").font(.caption) }
+                ForEach(reviews.indices,id:\.self) { i in
+                    let r = reviews[i]
+                    Text([r.author,r.stars.map { String(format:"%.1f/5",$0) } ?? "","Mangrove"].filter { !$0.isEmpty }.joined(separator:" · ")).font(.caption.bold())
+                    Text(r.text).font(.callout)
+                }
+            } else { ProgressView() }
+        }
+        .task(id:info) { if let info { photo = try? await PlaceDetails.photo(info) } }
+        .task(id:attempt) {
+            failed = false
+            do { reviews = try await PlaceDetails.reviews(place) } catch { if !Task.isCancelled { failed = true } }
         }
     }
 }
