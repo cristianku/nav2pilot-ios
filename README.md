@@ -26,12 +26,12 @@ The invitation appears only after using the app on three different days. You can
 reminders; a confirmed submission also stops them on that installation. Feedback is always available in Settings.
 For distribution, supply the app-scoped `NAV2PILOT_FEEDBACK_KEY` setting in the ignored `Config/Feedback.xcconfig`.
 
-The first time you open a new feature edition, **What’s new** gives you a short illustrated tour. Swipe or use
+The first time you open a new build from the app icon, **What’s new** gives you an illustrated tour. Swipe or use
 **Next**, skip it at any time, and replay it under **Settings → What’s new**. Shared places, map links and Siri
 searches take priority over the tour.
 
-For the next feature release, update the slides and `edition` in `App/ReleaseHighlights.swift` together with
-their translations in `App/Localizable.xcstrings`. Rebuilds with the same slides keep the same edition.
+For the next feature release, update the slides in `App/ReleaseHighlights.swift` together with their
+translations in `App/Localizable.xcstrings`. Dismissal is remembered for that build.
 
 1. **Get your comma token.** Open [jwt.comma.ai](https://jwt.comma.ai), sign in with the account your comma
    device is paired to, and copy the token.
